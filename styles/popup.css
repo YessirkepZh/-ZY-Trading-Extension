@@ -1,0 +1,201 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 420px;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+}
+
+.container { padding: 12px; }
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #333;
+}
+
+.logo { font-size: 15px; font-weight: 600; color: #fff; }
+.version { font-size: 11px; color: #666; }
+
+.section {
+  background: #242424;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 500;
+  color: #ccc;
+}
+
+.section-header:hover { background: #2a2a2a; }
+
+.section-body { padding: 0 12px 12px; }
+.section-body.collapsed { display: none; }
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+label { font-size: 11px; color: #888; }
+.optional { color: #555; }
+
+input, select {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #e0e0e0;
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input:focus, select:focus { border-color: #555; }
+
+/* Direction toggle */
+.direction-toggle {
+  display: flex;
+  gap: 4px;
+}
+
+.dir-btn {
+  flex: 1;
+  padding: 7px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #1a1a1a;
+  color: #888;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.dir-btn.active.long-active {
+  background: #1a3a1a;
+  border-color: #2d6a2d;
+  color: #4caf50;
+}
+
+.dir-btn.active.short-active {
+  background: #3a1a1a;
+  border-color: #6a2d2d;
+  color: #f44336;
+}
+
+/* Checklist */
+.checklist-group { margin-bottom: 10px; }
+
+.group-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding: 2px 0;
+}
+
+.group-title.plus { color: #4caf50; }
+.group-title.minus { color: #f44336; }
+.group-title.wait { color: #ff9800; }
+
+.checklist-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tag {
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #888;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.tag:hover { border-color: #555; color: #ccc; }
+
+.tag.selected.plus  { background: #1a3a1a; border-color: #2d6a2d; color: #4caf50; }
+.tag.selected.minus { background: #3a1a1a; border-color: #6a2d2d; color: #f44336; }
+.tag.selected.wait  { background: #3a2a1a; border-color: #6a4a1a; color: #ff9800; }
+
+/* Badge */
+.badge {
+  display: inline-block;
+  background: #333;
+  color: #ccc;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* Checkbox */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #ccc;
+}
+
+/* Submit button */
+.submit-btn {
+  width: 100%;
+  padding: 10px;
+  background: #2d5a2d;
+  border: 1px solid #3d7a3d;
+  border-radius: 8px;
+  color: #4caf50;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+
+.submit-btn:hover { background: #3d6a3d; }
+.submit-btn:active { background: #1d4a1d; }
+.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Status */
+.status {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.status.hidden { display: none; }
+.status.loading { background: #1a2a3a; color: #64b5f6; border: 1px solid #1e3a5a; }
+.status.success { background: #1a3a1a; color: #4caf50; border: 1px solid #2d6a2d; }
+.status.error   { background: #3a1a1a; color: #f44336; border: 1px solid #6a2d2d; }
+
+.chevron { transition: transform 0.2s; font-size: 10px; color: #555; }
+.collapsed .chevron { transform: rotate(-90deg); }

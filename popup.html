@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- Шапка -->
+    <div class="header">
+      <span class="logo">ZY Trading</span>
+      <span class="version">v2.0</span>
+    </div>
+
+    <!-- Секция 1: Основные параметры -->
+    <section class="section">
+      <div class="row">
+        <!-- Стратегия (select) -->
+        <div class="field">
+          <label>Стратегия</label>
+          <select id="strategy">
+            <option value="Пробой">Пробой</option>
+            <option value="Ложный Пробой">Ложный Пробой</option>
+            <option value="Отбой">Отбой</option>
+          </select>
+        </div>
+
+        <!-- Рынок (select) -->
+        <div class="field">
+          <label>Рынок</label>
+          <select id="marketType">
+            <option value="crypto">Крипто</option>
+            <option value="stocks">Акции</option>
+            <option value="forex">Форекс</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <!-- Тикер (text input, uppercase) -->
+        <div class="field">
+          <label>Тикер</label>
+          <input type="text" id="ticker" placeholder="BTCUSDT" />
+        </div>
+
+        <!-- Направление (toggle Long/Short) -->
+        <div class="field">
+          <label>Направление</label>
+          <div class="direction-toggle">
+            <button id="btn-long" class="dir-btn active long-active">Long</button>
+            <button id="btn-short" class="dir-btn">Short</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <!-- Уровень входа -->
+        <div class="field">
+          <label>Уровень</label>
+          <input type="number" id="entryRaw" placeholder="0.00" step="any" />
+        </div>
+
+        <!-- Стоп (опционально) -->
+        <div class="field">
+          <label>SL уровень <span class="optional">(опц.)</span></label>
+          <input type="number" id="customStop" placeholder="0.00" step="any" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Секция 2: Параметры риска (сворачиваемая) -->
+    <section class="section collapsible">
+      <div class="section-header" id="toggle-risk">
+        <span>Параметры риска</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body collapsed" id="risk-body">
+        <div class="row">
+          <div class="field">
+            <label>Риск %</label>
+            <input type="number" id="riskPercent" value="15" min="1" max="100" />
+          </div>
+          <div class="field">
+            <label>Ratio</label>
+            <input type="number" id="ratio" value="3" min="1" max="10" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Люфт %</label>
+            <input type="number" id="luftPercent" value="20" min="0" max="50" />
+          </div>
+          <div class="field">
+            <label>Сумма риска $</label>
+            <input type="number" id="riskSum" value="15" min="1" />
+          </div>
+        </div>
+        <!-- InPlay checkbox -->
+        <div class="row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="inPlay" />
+            <span>InPlay</span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Секция 3: Чек-лист (сворачиваемая) -->
+    <section class="section collapsible">
+      <div class="section-header" id="toggle-checklist">
+        <span>Чек-лист <span id="checklist-count" class="badge">0</span></span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body collapsed" id="checklist-body">
+
+        <!-- ПРЕДПОСЫЛКИ -->
+        <div class="checklist-group">
+          <div class="group-title plus">✅ ПРЕДПОСЫЛКИ</div>
+          <div id="checklist-plus" class="checklist-items"></div>
+        </div>
+
+        <!-- МИНУСЫ -->
+        <div class="checklist-group">
+          <div class="group-title minus">❌ МИНУСЫ</div>
+          <div id="checklist-minus" class="checklist-items"></div>
+        </div>
+
+        <!-- ОЖИДАЮ -->
+        <div class="checklist-group">
+          <div class="group-title wait">⏳ ОЖИДАЮ</div>
+          <div id="checklist-wait" class="checklist-items"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Кнопка отправки -->
+    <button id="submit-btn" class="submit-btn">
+      Отправить сценарий
+    </button>
+
+    <!-- Статус -->
+    <div id="status" class="status hidden"></div>
+
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
