@@ -1,11 +1,28 @@
 import { getChecklistForStrategy } from './checklists/index.js';
 import { BASE_URL } from './config.js';
+const ALL_STORAGE_KEYS = [
+    'ticker', 'marketType', 'strategy', 'direction',
+    'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
+    'entryRaw', 'customStop',
+    'checklistPlus', 'checklistMinus', 'checklistWait',
+];
+const SUBMIT_CLEAR_KEYS = [
+    'entryRaw', 'customStop',
+    'checklistPlus', 'checklistMinus', 'checklistWait',
+];
 let selectedPlus = new Set();
 let selectedMinus = new Set();
 let selectedWait = new Set();
 let currentStrategy = 'Пробой';
 let currentDirection = 'long';
-function renderChecklist(strategy) {
+function saveChecklistToStorage() {
+    chrome.storage.local.set({
+        checklistPlus: Array.from(selectedPlus),
+        checklistMinus: Array.from(selectedMinus),
+        checklistWait: Array.from(selectedWait),
+    });
+}
+function renderChecklist(strategy, savedPlus = [], savedMinus = [], savedWait = []) {
     const checklist = getChecklistForStrategy(strategy);
     selectedPlus.clear();
     selectedMinus.clear();
@@ -21,6 +38,10 @@ function renderChecklist(strategy) {
         btn.className = 'tag';
         btn.textContent = item.label;
         btn.dataset['key'] = item.key;
+        if (savedPlus.includes(item.key)) {
+            btn.classList.add('selected', 'plus');
+            selectedPlus.add(item.key);
+        }
         btn.addEventListener('click', () => {
             btn.classList.toggle('selected');
             if (btn.classList.contains('selected')) {
@@ -32,6 +53,7 @@ function renderChecklist(strategy) {
                 selectedPlus.delete(item.key);
             }
             updateChecklistCount();
+            saveChecklistToStorage();
         });
         plusContainer.appendChild(btn);
     });
@@ -40,6 +62,10 @@ function renderChecklist(strategy) {
         btn.className = 'tag';
         btn.textContent = item.label;
         btn.dataset['key'] = item.key;
+        if (savedMinus.includes(item.key)) {
+            btn.classList.add('selected', 'minus');
+            selectedMinus.add(item.key);
+        }
         btn.addEventListener('click', () => {
             btn.classList.toggle('selected');
             if (btn.classList.contains('selected')) {
@@ -51,6 +77,7 @@ function renderChecklist(strategy) {
                 selectedMinus.delete(item.key);
             }
             updateChecklistCount();
+            saveChecklistToStorage();
         });
         minusContainer.appendChild(btn);
     });
@@ -59,6 +86,10 @@ function renderChecklist(strategy) {
         btn.className = 'tag';
         btn.textContent = item.label;
         btn.dataset['key'] = item.key;
+        if (savedWait.includes(item.key)) {
+            btn.classList.add('selected', 'wait');
+            selectedWait.add(item.key);
+        }
         btn.addEventListener('click', () => {
             btn.classList.toggle('selected');
             if (btn.classList.contains('selected')) {
@@ -70,6 +101,7 @@ function renderChecklist(strategy) {
                 selectedWait.delete(item.key);
             }
             updateChecklistCount();
+            saveChecklistToStorage();
         });
         waitContainer.appendChild(btn);
     });
@@ -78,6 +110,21 @@ function renderChecklist(strategy) {
 function updateChecklistCount() {
     const total = selectedPlus.size + selectedMinus.size + selectedWait.size;
     document.getElementById('checklist-count').textContent = String(total);
+}
+function setDirection(dir) {
+    currentDirection = dir;
+    const btnLong = document.getElementById('btn-long');
+    const btnShort = document.getElementById('btn-short');
+    if (dir === 'long') {
+        btnLong.classList.add('active', 'long-active');
+        btnLong.classList.remove('short-active');
+        btnShort.classList.remove('active', 'long-active', 'short-active');
+    }
+    else {
+        btnShort.classList.add('active', 'short-active');
+        btnShort.classList.remove('long-active');
+        btnLong.classList.remove('active', 'long-active', 'short-active');
+    }
 }
 function collectPayload() {
     const checklist = {
@@ -103,15 +150,12 @@ function collectPayload() {
     };
 }
 function validatePayload(payload) {
-    if (!payload.ticker) {
+    if (!payload.ticker)
         return 'Укажите тикер';
-    }
-    if (!payload.entryRaw || payload.entryRaw <= 0) {
+    if (!payload.entryRaw || payload.entryRaw <= 0)
         return 'Укажите уровень входа (> 0)';
-    }
-    if (payload.customStop !== undefined && payload.customStop <= 0) {
+    if (payload.customStop !== undefined && payload.customStop <= 0)
         return 'SL уровень должен быть > 0';
-    }
     return null;
 }
 function showStatus(type, message) {
@@ -119,10 +163,25 @@ function showStatus(type, message) {
     el.className = `status ${type}`;
     el.textContent = message;
     if (type === 'success') {
-        setTimeout(() => {
-            el.className = 'status hidden';
-        }, 3000);
+        setTimeout(() => { el.className = 'status hidden'; }, 3000);
     }
+}
+async function clearAll() {
+    await chrome.storage.local.clear();
+    document.getElementById('ticker').value = '';
+    document.getElementById('marketType').value = 'crypto';
+    document.getElementById('strategy').value = 'Пробой';
+    document.getElementById('entryRaw').value = '';
+    document.getElementById('customStop').value = '';
+    document.getElementById('riskPercent').value = '15';
+    document.getElementById('ratio').value = '3';
+    document.getElementById('luftPercent').value = '20';
+    document.getElementById('riskSum').value = '15';
+    document.getElementById('inPlay').checked = false;
+    currentStrategy = 'Пробой';
+    setDirection('long');
+    renderChecklist(currentStrategy);
+    document.getElementById('status').className = 'status hidden';
 }
 async function submitPayload(payload) {
     const submitBtn = document.getElementById('submit-btn');
@@ -138,21 +197,10 @@ async function submitPayload(payload) {
         if (!response.ok) {
             throw new Error(data.message || `Ошибка ${response.status}`);
         }
-        await chrome.storage.local.set({
-            ticker: payload.ticker,
-            marketType: payload.marketType,
-            strategy: payload.strategy,
-            riskPercent: payload.riskPercent,
-            ratio: payload.ratio,
-            luftPercent: payload.luftPercent,
-            riskSum: payload.riskSum,
-        });
+        await chrome.storage.local.remove(SUBMIT_CLEAR_KEYS);
         showStatus('success', `✅ Отправлено! ID: ${data.id}`);
         document.getElementById('entryRaw').value = '';
         document.getElementById('customStop').value = '';
-        selectedPlus.clear();
-        selectedMinus.clear();
-        selectedWait.clear();
         renderChecklist(currentStrategy);
     }
     catch (err) {
@@ -170,10 +218,7 @@ function setupCollapsible(headerId, bodyId) {
     });
 }
 async function initForm() {
-    const stored = await chrome.storage.local.get([
-        'ticker', 'marketType', 'strategy',
-        'riskPercent', 'ratio', 'luftPercent', 'riskSum',
-    ]);
+    const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
     const tickerInput = document.getElementById('ticker');
     const marketTypeSelect = document.getElementById('marketType');
     const strategySelect = document.getElementById('strategy');
@@ -181,6 +226,9 @@ async function initForm() {
     const ratioInput = document.getElementById('ratio');
     const luftPercentInput = document.getElementById('luftPercent');
     const riskSumInput = document.getElementById('riskSum');
+    const entryRawInput = document.getElementById('entryRaw');
+    const customStopInput = document.getElementById('customStop');
+    const inPlayInput = document.getElementById('inPlay');
     if (stored['ticker'])
         tickerInput.value = stored['ticker'];
     if (stored['marketType'])
@@ -197,35 +245,68 @@ async function initForm() {
         luftPercentInput.value = String(stored['luftPercent']);
     if (stored['riskSum'])
         riskSumInput.value = String(stored['riskSum']);
-    renderChecklist(currentStrategy);
-    // Ticker uppercase
+    if (stored['entryRaw'])
+        entryRawInput.value = String(stored['entryRaw']);
+    if (stored['customStop'])
+        customStopInput.value = String(stored['customStop']);
+    if (stored['inPlay'])
+        inPlayInput.checked = stored['inPlay'];
+    if (stored['direction']) {
+        setDirection(stored['direction']);
+    }
+    const savedPlus = stored['checklistPlus'] ?? [];
+    const savedMinus = stored['checklistMinus'] ?? [];
+    const savedWait = stored['checklistWait'] ?? [];
+    renderChecklist(currentStrategy, savedPlus, savedMinus, savedWait);
+    // — Event listeners —
     tickerInput.addEventListener('input', () => {
         tickerInput.value = tickerInput.value.toUpperCase();
+        chrome.storage.local.set({ ticker: tickerInput.value });
     });
-    // Strategy change
+    marketTypeSelect.addEventListener('change', () => {
+        chrome.storage.local.set({ marketType: marketTypeSelect.value });
+    });
     strategySelect.addEventListener('change', () => {
         currentStrategy = strategySelect.value;
+        chrome.storage.local.set({ strategy: currentStrategy });
         renderChecklist(currentStrategy);
     });
-    // Direction toggle
+    entryRawInput.addEventListener('input', () => {
+        chrome.storage.local.set({ entryRaw: entryRawInput.value });
+    });
+    customStopInput.addEventListener('input', () => {
+        chrome.storage.local.set({ customStop: customStopInput.value });
+    });
+    riskPercentInput.addEventListener('input', () => {
+        chrome.storage.local.set({ riskPercent: riskPercentInput.value });
+    });
+    ratioInput.addEventListener('input', () => {
+        chrome.storage.local.set({ ratio: ratioInput.value });
+    });
+    luftPercentInput.addEventListener('input', () => {
+        chrome.storage.local.set({ luftPercent: luftPercentInput.value });
+    });
+    riskSumInput.addEventListener('input', () => {
+        chrome.storage.local.set({ riskSum: riskSumInput.value });
+    });
+    inPlayInput.addEventListener('change', () => {
+        chrome.storage.local.set({ inPlay: inPlayInput.checked });
+    });
     const btnLong = document.getElementById('btn-long');
     const btnShort = document.getElementById('btn-short');
     btnLong.addEventListener('click', () => {
-        currentDirection = 'long';
-        btnLong.classList.add('active', 'long-active');
-        btnLong.classList.remove('short-active');
-        btnShort.classList.remove('active', 'long-active', 'short-active');
+        setDirection('long');
+        chrome.storage.local.set({ direction: 'long' });
     });
     btnShort.addEventListener('click', () => {
-        currentDirection = 'short';
-        btnShort.classList.add('active', 'short-active');
-        btnShort.classList.remove('long-active');
-        btnLong.classList.remove('active', 'long-active', 'short-active');
+        setDirection('short');
+        chrome.storage.local.set({ direction: 'short' });
     });
-    // Collapsible sections
     setupCollapsible('toggle-risk', 'risk-body');
     setupCollapsible('toggle-checklist', 'checklist-body');
-    // Submit
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        clearAll();
+    });
     document.getElementById('submit-btn').addEventListener('click', () => {
         const payload = collectPayload();
         const error = validatePayload(payload);
