@@ -138,6 +138,58 @@
       </div>
     </section>
 
+    <!-- Секция 4: Управление сделкой -->
+    <section class="section collapsible">
+      <div class="section-header" id="toggle-deal">
+        <span>Управление сделкой</span>
+        <span class="chevron">▼</span>
+      </div>
+      <div class="section-body collapsed" id="deal-body">
+
+        <div class="row">
+          <div class="field">
+            <label>ID сделки</label>
+            <input type="number" id="deal-id" placeholder="123" min="1" />
+          </div>
+        </div>
+
+        <!-- Кнопки входа/пропуска -->
+        <div class="deal-actions">
+          <button id="btn-entered" class="deal-btn entered">
+            📸 Вошёл
+          </button>
+          <button id="btn-missed" class="deal-btn missed">
+            ⏭ Пропустил
+          </button>
+        </div>
+
+        <!-- Закрытие сделки -->
+        <div class="close-deal-section">
+          <div class="row">
+            <div class="field">
+              <label>Цена закрытия</label>
+              <input type="number" id="close-price" placeholder="0.00" step="any" />
+            </div>
+            <div class="field">
+              <label>Результат</label>
+              <select id="deal-result">
+                <option value="win">Win ✅</option>
+                <option value="loss">Loss ❌</option>
+                <option value="breakeven">BE ➖</option>
+              </select>
+            </div>
+          </div>
+          <button id="btn-close-deal" class="deal-btn close">
+            📸 Закрыть сделку
+          </button>
+        </div>
+
+        <!-- Статус операции -->
+        <div id="deal-status" class="status hidden"></div>
+
+      </div>
+    </section>
+
     <!-- Кнопка отправки -->
     <button id="submit-btn" class="submit-btn">
       Отправить сценарий

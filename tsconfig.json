@@ -10,6 +10,6 @@
     "types": ["chrome"],
     "skipLibCheck": true
   },
-  "include": ["*.ts", "checklists/*.ts"],
+  "include": ["*.ts", "checklists/*.ts", "screenshot.ts"],
   "exclude": ["dist"]
 }

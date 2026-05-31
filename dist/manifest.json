@@ -3,7 +3,7 @@
   "name": "ZY Trading",
   "description": "Форма сетапа для торговой системы ZY",
   "version": "2.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": [
     "http://localhost:3001/*",
     "https://zy-trading-backend-production.up.railway.app/*"

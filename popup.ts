@@ -1,12 +1,14 @@
 import { getChecklistForStrategy } from './checklists/index.js';
 import { Strategy, MarketType, Direction, ChecklistSnapshot, FormPayload } from './checklists/types.js';
 import { BASE_URL } from './config.js';
+import { captureScreenshot } from './screenshot.js';
 
 const ALL_STORAGE_KEYS = [
   'ticker', 'marketType', 'strategy', 'direction',
   'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
   'entryRaw', 'customStop',
   'checklistPlus', 'checklistMinus', 'checklistWait',
+  'lastDealId',
 ] as const;
 
 const SUBMIT_CLEAR_KEYS: Array<typeof ALL_STORAGE_KEYS[number]> = [
@@ -19,6 +21,8 @@ let selectedMinus: Set<string> = new Set();
 let selectedWait: Set<string> = new Set();
 let currentStrategy: Strategy = 'Пробой';
 let currentDirection: Direction = 'long';
+
+// ─── Checklist ────────────────────────────────────────────────────────────────
 
 function saveChecklistToStorage(): void {
   chrome.storage.local.set({
@@ -128,6 +132,8 @@ function updateChecklistCount(): void {
   document.getElementById('checklist-count')!.textContent = String(total);
 }
 
+// ─── Direction ────────────────────────────────────────────────────────────────
+
 function setDirection(dir: Direction): void {
   currentDirection = dir;
   const btnLong = document.getElementById('btn-long') as HTMLButtonElement;
@@ -142,6 +148,8 @@ function setDirection(dir: Direction): void {
     btnLong.classList.remove('active', 'long-active', 'short-active');
   }
 }
+
+// ─── Payload ──────────────────────────────────────────────────────────────────
 
 function collectPayload(): FormPayload {
   const checklist: ChecklistSnapshot = {
@@ -175,6 +183,8 @@ function validatePayload(payload: FormPayload): string | null {
   return null;
 }
 
+// ─── Status ───────────────────────────────────────────────────────────────────
+
 function showStatus(type: 'loading' | 'success' | 'error', message: string): void {
   const el = document.getElementById('status')!;
   el.className = `status ${type}`;
@@ -183,6 +193,18 @@ function showStatus(type: 'loading' | 'success' | 'error', message: string): voi
     setTimeout(() => { el.className = 'status hidden'; }, 3000);
   }
 }
+
+function showDealStatus(type: 'loading' | 'success' | 'error', message: string): void {
+  const el = document.getElementById('deal-status');
+  if (!el) return;
+  el.className = `status ${type}`;
+  el.textContent = message;
+  if (type === 'success') {
+    setTimeout(() => { el.className = 'status hidden'; }, 3000);
+  }
+}
+
+// ─── Clear ────────────────────────────────────────────────────────────────────
 
 async function clearAll(): Promise<void> {
   await chrome.storage.local.clear();
@@ -197,24 +219,40 @@ async function clearAll(): Promise<void> {
   (document.getElementById('luftPercent') as HTMLInputElement).value = '20';
   (document.getElementById('riskSum') as HTMLInputElement).value = '15';
   (document.getElementById('inPlay') as HTMLInputElement).checked = false;
+  (document.getElementById('deal-id') as HTMLInputElement).value = '';
+  (document.getElementById('close-price') as HTMLInputElement).value = '';
 
   currentStrategy = 'Пробой';
   setDirection('long');
   renderChecklist(currentStrategy);
 
   document.getElementById('status')!.className = 'status hidden';
+  const dealStatus = document.getElementById('deal-status');
+  if (dealStatus) dealStatus.className = 'status hidden';
 }
+
+// ─── Submit ───────────────────────────────────────────────────────────────────
 
 async function submitPayload(payload: FormPayload): Promise<void> {
   const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
   submitBtn.disabled = true;
+
+  showStatus('loading', 'Создаём скриншот...');
+
+  let screenshot: string | undefined;
+  try {
+    screenshot = await captureScreenshot();
+  } catch (err) {
+    console.warn('Screenshot failed:', err);
+  }
+
   showStatus('loading', 'Отправка...');
 
   try {
     const response = await fetch(`${BASE_URL}/api/createNote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, screenshot }),
     });
 
     const data = await response.json();
@@ -224,12 +262,16 @@ async function submitPayload(payload: FormPayload): Promise<void> {
     }
 
     await chrome.storage.local.remove(SUBMIT_CLEAR_KEYS);
+    await chrome.storage.local.set({ lastDealId: String(data.id) });
 
-    showStatus('success', `✅ Отправлено! ID: ${data.id}`);
+    showStatus('success', `✅ Отправлено! ID: #${data.id}`);
 
     (document.getElementById('entryRaw') as HTMLInputElement).value = '';
     (document.getElementById('customStop') as HTMLInputElement).value = '';
     renderChecklist(currentStrategy);
+
+    const dealIdInput = document.getElementById('deal-id') as HTMLInputElement;
+    if (dealIdInput) dealIdInput.value = String(data.id);
 
   } catch (err) {
     showStatus('error', `❌ ${(err as Error).message}`);
@@ -237,6 +279,67 @@ async function submitPayload(payload: FormPayload): Promise<void> {
     submitBtn.disabled = false;
   }
 }
+
+// ─── Deal management ──────────────────────────────────────────────────────────
+
+async function handleDealAction(
+  status: 'entered' | 'missed' | 'closed',
+  withScreenshot = true,
+  extra: { dealResult?: string; closePrice?: number } = {},
+): Promise<void> {
+  const dealId = parseInt((document.getElementById('deal-id') as HTMLInputElement).value);
+  if (!dealId || isNaN(dealId)) {
+    showDealStatus('error', '❌ Укажи ID сделки');
+    return;
+  }
+
+  let screenshot: string | undefined;
+  if (withScreenshot) {
+    showDealStatus('loading', 'Создаём скриншот...');
+    try {
+      screenshot = await captureScreenshot();
+    } catch (err) {
+      console.warn('Screenshot failed:', err);
+    }
+  }
+
+  showDealStatus('loading', 'Отправка...');
+
+  try {
+    const body: Record<string, unknown> = { id: dealId, status, screenshot, ...extra };
+
+    const response = await fetch(`${BASE_URL}/api/updateDeal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || `Ошибка ${response.status}`);
+    }
+
+    const labels: Record<string, string> = {
+      entered: '✅ Вход зафиксирован',
+      missed: '⏭ Сделка пропущена',
+      closed: '🏁 Сделка закрыта',
+    };
+
+    showDealStatus('success', labels[status] ?? '✅ Готово');
+
+    if (status === 'closed' || status === 'missed') {
+      (document.getElementById('deal-id') as HTMLInputElement).value = '';
+      (document.getElementById('close-price') as HTMLInputElement).value = '';
+      await chrome.storage.local.remove('lastDealId');
+    }
+
+  } catch (err) {
+    showDealStatus('error', `❌ ${(err as Error).message}`);
+  }
+}
+
+// ─── Collapsible ──────────────────────────────────────────────────────────────
 
 function setupCollapsible(headerId: string, bodyId: string): void {
   const header = document.getElementById(headerId)!;
@@ -246,19 +349,22 @@ function setupCollapsible(headerId: string, bodyId: string): void {
   });
 }
 
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
 async function initForm(): Promise<void> {
   const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
 
-  const tickerInput        = document.getElementById('ticker') as HTMLInputElement;
-  const marketTypeSelect   = document.getElementById('marketType') as HTMLSelectElement;
-  const strategySelect     = document.getElementById('strategy') as HTMLSelectElement;
-  const riskPercentInput   = document.getElementById('riskPercent') as HTMLInputElement;
-  const ratioInput         = document.getElementById('ratio') as HTMLInputElement;
-  const luftPercentInput   = document.getElementById('luftPercent') as HTMLInputElement;
-  const riskSumInput       = document.getElementById('riskSum') as HTMLInputElement;
-  const entryRawInput      = document.getElementById('entryRaw') as HTMLInputElement;
-  const customStopInput    = document.getElementById('customStop') as HTMLInputElement;
-  const inPlayInput        = document.getElementById('inPlay') as HTMLInputElement;
+  const tickerInput      = document.getElementById('ticker') as HTMLInputElement;
+  const marketTypeSelect = document.getElementById('marketType') as HTMLSelectElement;
+  const strategySelect   = document.getElementById('strategy') as HTMLSelectElement;
+  const riskPercentInput = document.getElementById('riskPercent') as HTMLInputElement;
+  const ratioInput       = document.getElementById('ratio') as HTMLInputElement;
+  const luftPercentInput = document.getElementById('luftPercent') as HTMLInputElement;
+  const riskSumInput     = document.getElementById('riskSum') as HTMLInputElement;
+  const entryRawInput    = document.getElementById('entryRaw') as HTMLInputElement;
+  const customStopInput  = document.getElementById('customStop') as HTMLInputElement;
+  const inPlayInput      = document.getElementById('inPlay') as HTMLInputElement;
+  const dealIdInput      = document.getElementById('deal-id') as HTMLInputElement;
 
   if (stored['ticker'])      tickerInput.value      = stored['ticker'] as string;
   if (stored['marketType'])  marketTypeSelect.value = stored['marketType'] as string;
@@ -273,17 +379,16 @@ async function initForm(): Promise<void> {
   if (stored['entryRaw'])    entryRawInput.value    = String(stored['entryRaw']);
   if (stored['customStop'])  customStopInput.value  = String(stored['customStop']);
   if (stored['inPlay'])      inPlayInput.checked    = stored['inPlay'] as boolean;
+  if (stored['lastDealId'])  dealIdInput.value      = stored['lastDealId'] as string;
 
-  if (stored['direction']) {
-    setDirection(stored['direction'] as Direction);
-  }
+  if (stored['direction']) setDirection(stored['direction'] as Direction);
 
   const savedPlus  = (stored['checklistPlus']  as string[] | undefined) ?? [];
   const savedMinus = (stored['checklistMinus'] as string[] | undefined) ?? [];
   const savedWait  = (stored['checklistWait']  as string[] | undefined) ?? [];
   renderChecklist(currentStrategy, savedPlus, savedMinus, savedWait);
 
-  // — Event listeners —
+  // — Save on change listeners —
 
   tickerInput.addEventListener('input', () => {
     tickerInput.value = tickerInput.value.toUpperCase();
@@ -328,25 +433,31 @@ async function initForm(): Promise<void> {
     chrome.storage.local.set({ inPlay: inPlayInput.checked });
   });
 
-  const btnLong  = document.getElementById('btn-long')  as HTMLButtonElement;
-  const btnShort = document.getElementById('btn-short') as HTMLButtonElement;
+  // — Direction —
 
-  btnLong.addEventListener('click', () => {
+  document.getElementById('btn-long')!.addEventListener('click', () => {
     setDirection('long');
     chrome.storage.local.set({ direction: 'long' });
   });
 
-  btnShort.addEventListener('click', () => {
+  document.getElementById('btn-short')!.addEventListener('click', () => {
     setDirection('short');
     chrome.storage.local.set({ direction: 'short' });
   });
 
+  // — Collapsible —
+
   setupCollapsible('toggle-risk', 'risk-body');
   setupCollapsible('toggle-checklist', 'checklist-body');
+  setupCollapsible('toggle-deal', 'deal-body');
+
+  // — Clear —
 
   document.getElementById('clear-btn')!.addEventListener('click', () => {
     clearAll();
   });
+
+  // — Submit —
 
   document.getElementById('submit-btn')!.addEventListener('click', () => {
     const payload = collectPayload();
@@ -356,6 +467,28 @@ async function initForm(): Promise<void> {
       return;
     }
     submitPayload(payload);
+  });
+
+  // — Deal actions —
+
+  document.getElementById('btn-entered')?.addEventListener('click', () => {
+    handleDealAction('entered');
+  });
+
+  document.getElementById('btn-missed')?.addEventListener('click', () => {
+    handleDealAction('missed', false);
+  });
+
+  document.getElementById('btn-close-deal')?.addEventListener('click', () => {
+    const dealResult = (document.getElementById('deal-result') as HTMLSelectElement).value as 'win' | 'loss' | 'breakeven';
+    const closePrice = parseFloat((document.getElementById('close-price') as HTMLInputElement).value);
+
+    if (!closePrice || closePrice <= 0) {
+      showDealStatus('error', '❌ Укажи цену закрытия');
+      return;
+    }
+
+    handleDealAction('closed', true, { dealResult, closePrice });
   });
 }
 

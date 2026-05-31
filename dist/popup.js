@@ -1,10 +1,12 @@
 import { getChecklistForStrategy } from './checklists/index.js';
 import { BASE_URL } from './config.js';
+import { captureScreenshot } from './screenshot.js';
 const ALL_STORAGE_KEYS = [
     'ticker', 'marketType', 'strategy', 'direction',
     'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
     'entryRaw', 'customStop',
     'checklistPlus', 'checklistMinus', 'checklistWait',
+    'lastDealId',
 ];
 const SUBMIT_CLEAR_KEYS = [
     'entryRaw', 'customStop',
@@ -15,6 +17,7 @@ let selectedMinus = new Set();
 let selectedWait = new Set();
 let currentStrategy = 'Пробой';
 let currentDirection = 'long';
+// ─── Checklist ────────────────────────────────────────────────────────────────
 function saveChecklistToStorage() {
     chrome.storage.local.set({
         checklistPlus: Array.from(selectedPlus),
@@ -111,6 +114,7 @@ function updateChecklistCount() {
     const total = selectedPlus.size + selectedMinus.size + selectedWait.size;
     document.getElementById('checklist-count').textContent = String(total);
 }
+// ─── Direction ────────────────────────────────────────────────────────────────
 function setDirection(dir) {
     currentDirection = dir;
     const btnLong = document.getElementById('btn-long');
@@ -126,6 +130,7 @@ function setDirection(dir) {
         btnLong.classList.remove('active', 'long-active', 'short-active');
     }
 }
+// ─── Payload ──────────────────────────────────────────────────────────────────
 function collectPayload() {
     const checklist = {
         plus: Array.from(selectedPlus),
@@ -158,6 +163,7 @@ function validatePayload(payload) {
         return 'SL уровень должен быть > 0';
     return null;
 }
+// ─── Status ───────────────────────────────────────────────────────────────────
 function showStatus(type, message) {
     const el = document.getElementById('status');
     el.className = `status ${type}`;
@@ -166,6 +172,17 @@ function showStatus(type, message) {
         setTimeout(() => { el.className = 'status hidden'; }, 3000);
     }
 }
+function showDealStatus(type, message) {
+    const el = document.getElementById('deal-status');
+    if (!el)
+        return;
+    el.className = `status ${type}`;
+    el.textContent = message;
+    if (type === 'success') {
+        setTimeout(() => { el.className = 'status hidden'; }, 3000);
+    }
+}
+// ─── Clear ────────────────────────────────────────────────────────────────────
 async function clearAll() {
     await chrome.storage.local.clear();
     document.getElementById('ticker').value = '';
@@ -178,30 +195,48 @@ async function clearAll() {
     document.getElementById('luftPercent').value = '20';
     document.getElementById('riskSum').value = '15';
     document.getElementById('inPlay').checked = false;
+    document.getElementById('deal-id').value = '';
+    document.getElementById('close-price').value = '';
     currentStrategy = 'Пробой';
     setDirection('long');
     renderChecklist(currentStrategy);
     document.getElementById('status').className = 'status hidden';
+    const dealStatus = document.getElementById('deal-status');
+    if (dealStatus)
+        dealStatus.className = 'status hidden';
 }
+// ─── Submit ───────────────────────────────────────────────────────────────────
 async function submitPayload(payload) {
     const submitBtn = document.getElementById('submit-btn');
     submitBtn.disabled = true;
+    showStatus('loading', 'Создаём скриншот...');
+    let screenshot;
+    try {
+        screenshot = await captureScreenshot();
+    }
+    catch (err) {
+        console.warn('Screenshot failed:', err);
+    }
     showStatus('loading', 'Отправка...');
     try {
         const response = await fetch(`${BASE_URL}/api/createNote`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({ ...payload, screenshot }),
         });
         const data = await response.json();
         if (!response.ok) {
             throw new Error(data.message || `Ошибка ${response.status}`);
         }
         await chrome.storage.local.remove(SUBMIT_CLEAR_KEYS);
-        showStatus('success', `✅ Отправлено! ID: ${data.id}`);
+        await chrome.storage.local.set({ lastDealId: String(data.id) });
+        showStatus('success', `✅ Отправлено! ID: #${data.id}`);
         document.getElementById('entryRaw').value = '';
         document.getElementById('customStop').value = '';
         renderChecklist(currentStrategy);
+        const dealIdInput = document.getElementById('deal-id');
+        if (dealIdInput)
+            dealIdInput.value = String(data.id);
     }
     catch (err) {
         showStatus('error', `❌ ${err.message}`);
@@ -210,6 +245,52 @@ async function submitPayload(payload) {
         submitBtn.disabled = false;
     }
 }
+// ─── Deal management ──────────────────────────────────────────────────────────
+async function handleDealAction(status, withScreenshot = true, extra = {}) {
+    const dealId = parseInt(document.getElementById('deal-id').value);
+    if (!dealId || isNaN(dealId)) {
+        showDealStatus('error', '❌ Укажи ID сделки');
+        return;
+    }
+    let screenshot;
+    if (withScreenshot) {
+        showDealStatus('loading', 'Создаём скриншот...');
+        try {
+            screenshot = await captureScreenshot();
+        }
+        catch (err) {
+            console.warn('Screenshot failed:', err);
+        }
+    }
+    showDealStatus('loading', 'Отправка...');
+    try {
+        const body = { id: dealId, status, screenshot, ...extra };
+        const response = await fetch(`${BASE_URL}/api/updateDeal`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || `Ошибка ${response.status}`);
+        }
+        const labels = {
+            entered: '✅ Вход зафиксирован',
+            missed: '⏭ Сделка пропущена',
+            closed: '🏁 Сделка закрыта',
+        };
+        showDealStatus('success', labels[status] ?? '✅ Готово');
+        if (status === 'closed' || status === 'missed') {
+            document.getElementById('deal-id').value = '';
+            document.getElementById('close-price').value = '';
+            await chrome.storage.local.remove('lastDealId');
+        }
+    }
+    catch (err) {
+        showDealStatus('error', `❌ ${err.message}`);
+    }
+}
+// ─── Collapsible ──────────────────────────────────────────────────────────────
 function setupCollapsible(headerId, bodyId) {
     const header = document.getElementById(headerId);
     const body = document.getElementById(bodyId);
@@ -217,6 +298,7 @@ function setupCollapsible(headerId, bodyId) {
         body.classList.toggle('collapsed');
     });
 }
+// ─── Init ─────────────────────────────────────────────────────────────────────
 async function initForm() {
     const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
     const tickerInput = document.getElementById('ticker');
@@ -229,6 +311,7 @@ async function initForm() {
     const entryRawInput = document.getElementById('entryRaw');
     const customStopInput = document.getElementById('customStop');
     const inPlayInput = document.getElementById('inPlay');
+    const dealIdInput = document.getElementById('deal-id');
     if (stored['ticker'])
         tickerInput.value = stored['ticker'];
     if (stored['marketType'])
@@ -251,14 +334,15 @@ async function initForm() {
         customStopInput.value = String(stored['customStop']);
     if (stored['inPlay'])
         inPlayInput.checked = stored['inPlay'];
-    if (stored['direction']) {
+    if (stored['lastDealId'])
+        dealIdInput.value = stored['lastDealId'];
+    if (stored['direction'])
         setDirection(stored['direction']);
-    }
     const savedPlus = stored['checklistPlus'] ?? [];
     const savedMinus = stored['checklistMinus'] ?? [];
     const savedWait = stored['checklistWait'] ?? [];
     renderChecklist(currentStrategy, savedPlus, savedMinus, savedWait);
-    // — Event listeners —
+    // — Save on change listeners —
     tickerInput.addEventListener('input', () => {
         tickerInput.value = tickerInput.value.toUpperCase();
         chrome.storage.local.set({ ticker: tickerInput.value });
@@ -292,21 +376,24 @@ async function initForm() {
     inPlayInput.addEventListener('change', () => {
         chrome.storage.local.set({ inPlay: inPlayInput.checked });
     });
-    const btnLong = document.getElementById('btn-long');
-    const btnShort = document.getElementById('btn-short');
-    btnLong.addEventListener('click', () => {
+    // — Direction —
+    document.getElementById('btn-long').addEventListener('click', () => {
         setDirection('long');
         chrome.storage.local.set({ direction: 'long' });
     });
-    btnShort.addEventListener('click', () => {
+    document.getElementById('btn-short').addEventListener('click', () => {
         setDirection('short');
         chrome.storage.local.set({ direction: 'short' });
     });
+    // — Collapsible —
     setupCollapsible('toggle-risk', 'risk-body');
     setupCollapsible('toggle-checklist', 'checklist-body');
+    setupCollapsible('toggle-deal', 'deal-body');
+    // — Clear —
     document.getElementById('clear-btn').addEventListener('click', () => {
         clearAll();
     });
+    // — Submit —
     document.getElementById('submit-btn').addEventListener('click', () => {
         const payload = collectPayload();
         const error = validatePayload(payload);
@@ -315,6 +402,22 @@ async function initForm() {
             return;
         }
         submitPayload(payload);
+    });
+    // — Deal actions —
+    document.getElementById('btn-entered')?.addEventListener('click', () => {
+        handleDealAction('entered');
+    });
+    document.getElementById('btn-missed')?.addEventListener('click', () => {
+        handleDealAction('missed', false);
+    });
+    document.getElementById('btn-close-deal')?.addEventListener('click', () => {
+        const dealResult = document.getElementById('deal-result').value;
+        const closePrice = parseFloat(document.getElementById('close-price').value);
+        if (!closePrice || closePrice <= 0) {
+            showDealStatus('error', '❌ Укажи цену закрытия');
+            return;
+        }
+        handleDealAction('closed', true, { dealResult, closePrice });
     });
 }
 document.addEventListener('DOMContentLoaded', () => {
