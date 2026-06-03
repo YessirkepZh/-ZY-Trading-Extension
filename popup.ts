@@ -158,6 +158,13 @@ function collectPayload(): FormPayload {
     wait: Array.from(selectedWait),
   };
 
+  const atrOverrideVal = parseFloat(
+    (document.getElementById('atrOverride') as HTMLInputElement).value
+  );
+  const passRoadOverrideVal = parseFloat(
+    (document.getElementById('passRoadOverride') as HTMLInputElement).value
+  );
+
   return {
     ticker: (document.getElementById('ticker') as HTMLInputElement).value.trim().toUpperCase(),
     marketType: (document.getElementById('marketType') as HTMLSelectElement).value as MarketType,
@@ -165,6 +172,8 @@ function collectPayload(): FormPayload {
     direction: currentDirection,
     entryRaw: parseFloat((document.getElementById('entryRaw') as HTMLInputElement).value),
     customStop: parseFloat((document.getElementById('customStop') as HTMLInputElement).value) || undefined,
+    atrOverride:      !isNaN(atrOverrideVal) && atrOverrideVal > 0 ? atrOverrideVal : undefined,
+    passRoadOverride: !isNaN(passRoadOverrideVal) && passRoadOverrideVal > 0 ? passRoadOverrideVal : undefined,
     riskPercent: parseFloat((document.getElementById('riskPercent') as HTMLInputElement).value),
     ratio: parseFloat((document.getElementById('ratio') as HTMLInputElement).value),
     luftPercent: parseFloat((document.getElementById('luftPercent') as HTMLInputElement).value),
@@ -180,6 +189,9 @@ function validatePayload(payload: FormPayload): string | null {
   if (!payload.ticker) return 'Укажите тикер';
   if (!payload.entryRaw || payload.entryRaw <= 0) return 'Укажите уровень входа (> 0)';
   if (payload.customStop !== undefined && payload.customStop <= 0) return 'SL уровень должен быть > 0';
+  if (payload.marketType === 'crypto' && !payload.atrOverride) {
+    return '⚠️ Для крипты укажи ATR из TradingView лейбла';
+  }
   return null;
 }
 
@@ -214,6 +226,8 @@ async function clearAll(): Promise<void> {
   (document.getElementById('strategy') as HTMLSelectElement).value = 'Пробой';
   (document.getElementById('entryRaw') as HTMLInputElement).value = '';
   (document.getElementById('customStop') as HTMLInputElement).value = '';
+  (document.getElementById('atrOverride') as HTMLInputElement).value = '';
+  (document.getElementById('passRoadOverride') as HTMLInputElement).value = '';
   (document.getElementById('riskPercent') as HTMLInputElement).value = '15';
   (document.getElementById('ratio') as HTMLInputElement).value = '3';
   (document.getElementById('luftPercent') as HTMLInputElement).value = '20';
@@ -268,6 +282,8 @@ async function submitPayload(payload: FormPayload): Promise<void> {
 
     (document.getElementById('entryRaw') as HTMLInputElement).value = '';
     (document.getElementById('customStop') as HTMLInputElement).value = '';
+    (document.getElementById('atrOverride') as HTMLInputElement).value = '';
+    (document.getElementById('passRoadOverride') as HTMLInputElement).value = '';
     renderChecklist(currentStrategy);
 
     const dealIdInput = document.getElementById('deal-id') as HTMLInputElement;
@@ -395,9 +411,18 @@ async function initForm(): Promise<void> {
     chrome.storage.local.set({ ticker: tickerInput.value });
   });
 
+  const atrOverrideInput = document.getElementById('atrOverride') as HTMLInputElement;
+
+  const updateAtrRequired = (): void => {
+    atrOverrideInput.required = marketTypeSelect.value === 'crypto';
+  };
+
   marketTypeSelect.addEventListener('change', () => {
     chrome.storage.local.set({ marketType: marketTypeSelect.value });
+    updateAtrRequired();
   });
+
+  updateAtrRequired();
 
   strategySelect.addEventListener('change', () => {
     currentStrategy = strategySelect.value as Strategy;

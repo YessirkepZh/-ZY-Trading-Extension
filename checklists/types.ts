@@ -26,6 +26,8 @@ export interface FormPayload {
   direction: Direction;
   entryRaw: number;
   customStop?: number;
+  atrOverride?: number;
+  passRoadOverride?: number;
   riskPercent: number;
   ratio: number;
   luftPercent: number;

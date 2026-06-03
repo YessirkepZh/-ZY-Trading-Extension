@@ -269,3 +269,21 @@ input:focus, select:focus { border-color: #555; }
   padding-top: 10px;
   margin-top: 4px;
 }
+
+.from-tv {
+  color: #4a9eff;
+  font-size: 10px;
+  font-weight: normal;
+}
+
+.tv-hint {
+  font-size: 11px;
+  color: #555;
+  margin-top: -4px;
+  margin-bottom: 8px;
+  padding: 0 2px;
+}
+
+#atrOverride:required {
+  border-color: #4a9eff;
+}

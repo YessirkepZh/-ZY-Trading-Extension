@@ -137,6 +137,8 @@ function collectPayload() {
         minus: Array.from(selectedMinus),
         wait: Array.from(selectedWait),
     };
+    const atrOverrideVal = parseFloat(document.getElementById('atrOverride').value);
+    const passRoadOverrideVal = parseFloat(document.getElementById('passRoadOverride').value);
     return {
         ticker: document.getElementById('ticker').value.trim().toUpperCase(),
         marketType: document.getElementById('marketType').value,
@@ -144,6 +146,8 @@ function collectPayload() {
         direction: currentDirection,
         entryRaw: parseFloat(document.getElementById('entryRaw').value),
         customStop: parseFloat(document.getElementById('customStop').value) || undefined,
+        atrOverride: !isNaN(atrOverrideVal) && atrOverrideVal > 0 ? atrOverrideVal : undefined,
+        passRoadOverride: !isNaN(passRoadOverrideVal) && passRoadOverrideVal > 0 ? passRoadOverrideVal : undefined,
         riskPercent: parseFloat(document.getElementById('riskPercent').value),
         ratio: parseFloat(document.getElementById('ratio').value),
         luftPercent: parseFloat(document.getElementById('luftPercent').value),
@@ -161,6 +165,9 @@ function validatePayload(payload) {
         return 'Укажите уровень входа (> 0)';
     if (payload.customStop !== undefined && payload.customStop <= 0)
         return 'SL уровень должен быть > 0';
+    if (payload.marketType === 'crypto' && !payload.atrOverride) {
+        return '⚠️ Для крипты укажи ATR из TradingView лейбла';
+    }
     return null;
 }
 // ─── Status ───────────────────────────────────────────────────────────────────
@@ -190,6 +197,8 @@ async function clearAll() {
     document.getElementById('strategy').value = 'Пробой';
     document.getElementById('entryRaw').value = '';
     document.getElementById('customStop').value = '';
+    document.getElementById('atrOverride').value = '';
+    document.getElementById('passRoadOverride').value = '';
     document.getElementById('riskPercent').value = '15';
     document.getElementById('ratio').value = '3';
     document.getElementById('luftPercent').value = '20';
@@ -233,6 +242,8 @@ async function submitPayload(payload) {
         showStatus('success', `✅ Отправлено! ID: #${data.id}`);
         document.getElementById('entryRaw').value = '';
         document.getElementById('customStop').value = '';
+        document.getElementById('atrOverride').value = '';
+        document.getElementById('passRoadOverride').value = '';
         renderChecklist(currentStrategy);
         const dealIdInput = document.getElementById('deal-id');
         if (dealIdInput)
@@ -347,9 +358,15 @@ async function initForm() {
         tickerInput.value = tickerInput.value.toUpperCase();
         chrome.storage.local.set({ ticker: tickerInput.value });
     });
+    const atrOverrideInput = document.getElementById('atrOverride');
+    const updateAtrRequired = () => {
+        atrOverrideInput.required = marketTypeSelect.value === 'crypto';
+    };
     marketTypeSelect.addEventListener('change', () => {
         chrome.storage.local.set({ marketType: marketTypeSelect.value });
+        updateAtrRequired();
     });
+    updateAtrRequired();
     strategySelect.addEventListener('change', () => {
         currentStrategy = strategySelect.value;
         chrome.storage.local.set({ strategy: currentStrategy });
