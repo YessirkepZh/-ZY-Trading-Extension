@@ -1,152 +1,32 @@
-import { Checklist, Strategy } from './types';
+import { Checklist, ChecklistGroup, Strategy } from './types.js';
+import { BASE_URL } from '../config.js';
 
-const proboyChecklist: Checklist = {
-  ПРЕДПОСЫЛКИ: [
-    { key: "compression", label: "Поджатие" },
-    { key: "small-bars", label: "Подход на маленьких барах" },
-    { key: "close-to-level", label: "Закрытие близко уровня" },
-    { key: "room-to-next", label: "Есть запас хода до след уровня" },
-    { key: "near-retest", label: "Ближный ретест" },
-    { key: "close-under-high-low", label: "Закрытие под high/low на уровне" },
-    { key: "no-infected-zone", label: "Нет зараженной зоны за уровне" },
-    { key: "empty-behind", label: "Пустота за уровнем. Легко пойдем" },
-    { key: "no-lp-reaction", label: "Нет реакции на LP" },
-    { key: "gt-lt-match", label: "ГТ и ЛТ совпадают" },
-    { key: "no-pnb-pullback", label: "После ПНБ нет отката" },
-    { key: "fake-move", label: "Задерг против тренда" },
-    { key: "buy-sell-bar", label: "Выкупной/Продажный бар" },
-    { key: "own-game", label: "Своя игра" },
-    { key: "u-formation", label: "U формация" },
-    { key: "h1-h4-accum", label: "Накопление на H1, H4" },
-    { key: "follow-market", label: "Идет за рынком" },
-    { key: "accum", label: "Накопление" },
-  ],
-  МИНУСЫ: [
-    { key: "low-room", label: "Маленький запас хода" },
-    { key: "chop", label: "Запил на уровне" },
-    { key: "h1-far", label: "Накопление на H1 далеко от уровня" },
-    { key: "h4-far", label: "Накопление на H4 далеко от уровня" },
-    { key: "flat-bars-loc", label: "Выравнивание баров на лок. ТФ" },
-    { key: "flat-bars-d1", label: "Выравнивание баров на D1" },
-    { key: "volatility-near", label: "Повышенная волатильность вблизи уровня" },
-    { key: "sharp-approach", label: "Резкий подход к уровню" },
-    { key: "far-open-d1", label: "Далеко открылись на D1" },
-    { key: "new-coin", label: "Новая монета" },
-    { key: "volume-drop", label: "Уменьшение объема" },
-    { key: "extreme", label: "Экстримум" },
-    { key: "weak-h1", label: "Слабое накопление H1" },
-    { key: "weak-h4", label: "Слабое накопление H4" },
-    { key: "early-break", label: "Рано пробивает" },
-    { key: "atr50", label: "Пройдено >50% ATR" },
-    { key: "recent-break", label: "Уровень недавно пробивался" },
-    { key: "btc-other-way", label: "Биткоин в другую сторону" },
-    { key: "infected-zone", label: "Зараженная зона" },
-  ],
-  ОЖИДАЮ: [
-    { key: "wait-compression", label: "Подход с поджатием" },
-    { key: "close-h4", label: "Закрытие вблизи уровня на H4" },
-    { key: "close-h1", label: "Закрытие вблизи уровня на H1" },
-    { key: "test-h1-accum", label: "Тест уровня c накоплением H1" },
-    { key: "chop-exit", label: "Выход из запила" },
-    { key: "volatility-fade", label: "Затухание волатильности" },
-    { key: "lp-no-pullback", label: "ЛП без отката" },
-    { key: "accum-close", label: "Накопление ближе к уровню (на лок ТФ)" },
-    { key: "level-confirm", label: "Подтверждение уровня" },
-    { key: "volume-rise", label: "Повышение объёма" },
-  ],
-};
+const CACHE_KEY = 'checklistCache';
 
-const falseProboyChecklist: Checklist = {
-  ПРЕДПОСЫЛКИ: [
-    { key: "fp-sharp-break", label: "Резкий пробой уровня" },
-    { key: "fp-close-back", label: "Закрытие обратно под/над уровнем" },
-    { key: "fp-absorption", label: "Поглощение пробойных баров" },
-    { key: "fp-weak-volume", label: "Слабый объём на пробое" },
-    { key: "fp-long-tail", label: "Длинный хвост на пробое" },
-    { key: "fp-no-accum-before", label: "Нет накопления перед пробоем" },
-    { key: "fp-strong-level", label: "Уровень сильный (многократный тест)" },
-    { key: "fp-no-room-behind", label: "Нет запаса хода за уровнем" },
-    { key: "fp-infected-behind", label: "Зараженная зона за уровнем" },
-    { key: "fp-btc-opposite", label: "Биткоин в другую сторону" },
-    { key: "fp-market-against", label: "Рынок против направления пробоя" },
-    { key: "fp-gt-lt-no-match", label: "ГТ и ЛТ не совпадают" },
-    { key: "fp-own-game", label: "Своя игра" },
-    { key: "fp-fake-spike", label: "Задерг за уровень без объёма" },
-    { key: "fp-no-retest", label: "Нет ретеста снизу/сверху после пробоя" },
-    { key: "fp-fast-return", label: "Быстрый возврат в диапазон" },
-    { key: "fp-bad-background", label: "Пробой на плохом фоне" },
-    { key: "fp-no-accum-behind", label: "Накопление за уровнем отсутствует" },
-    { key: "fp-buy-sell-return", label: "Выкупной/Продажный бар на возврате" },
-    { key: "fp-lp-reaction", label: "Реакция на LP" },
-    { key: "fp-weak-impulse", label: "Слабость на пробое, нет импульса" },
-    { key: "fp-h1-in-range", label: "H1 накопление в диапазоне" },
-    { key: "fp-close-inside", label: "Закрытие выше/ниже уровня пробоя" },
-    { key: "fp-level-d1", label: "Уровень совпадает с D1" },
-    { key: "fp-no-continuation", label: "После пробоя нет продолжения" },
-    { key: "fp-atr-not-done", label: "ATR не пройден" },
-  ],
-  МИНУСЫ: [
-    { key: "fp-no-return-signal", label: "Нет сигнала на возврат" },
-    { key: "fp-strong-impulse", label: "Сильный импульс на пробое" },
-    { key: "fp-high-volume-bar", label: "Большой объём пробойного бара" },
-    { key: "fp-strong-trend", label: "Тренд сильный за уровнем" },
-    { key: "fp-accum-behind", label: "Накопление за уровнем есть" },
-    { key: "fp-far-entry", label: "Вход далеко от уровня" },
-    { key: "fp-high-volatility", label: "Повышенная волатильность" },
-  ],
-  ОЖИДАЮ: [
-    { key: "fp-return-close", label: "Возврат в диапазон с закрытием" },
-    { key: "fp-accum-after-return", label: "Накопление у уровня после возврата" },
-    { key: "fp-fp-close-h1", label: "Ложный пробой + закрытие H1" },
-    { key: "fp-loc-confirm", label: "Подтверждение на лок ТФ" },
-    { key: "fp-volume-return-grows", label: "Объём на возврате растёт" },
-    { key: "fp-volatility-fade", label: "Затухание волатильности" },
-    { key: "fp-lp-no-continuation", label: "ЛП без продолжения" },
-    { key: "fp-level-test-below", label: "Тест уровня снизу/сверху" },
-    { key: "fp-engulf-return", label: "Бар поглощения на возврате" },
-  ],
-};
+let loadedGroups: ChecklistGroup[] = [];
 
-const otboyChecklist: Checklist = {
-  ПРЕДПОСЫЛКИ: [
-    { key: "ob-clear-level", label: "Чёткий уровень поддержки/сопротивления" },
-    { key: "ob-accum-near", label: "Накопление у уровня" },
-    { key: "ob-reaction-tails", label: "Реакция на уровне (хвосты)" },
-    { key: "ob-volume-decrease", label: "Объём при подходе снижается" },
-    { key: "ob-no-break", label: "Нет пробоя уровня" },
-    { key: "ob-close-near", label: "Закрытие вблизи уровня" },
-    { key: "ob-gt-lt-match", label: "ГТ и ЛТ совпадают" },
-    { key: "ob-btc-same-way", label: "Биткоин в ту же сторону" },
-    { key: "ob-own-game", label: "Своя игра" },
-    { key: "ob-compression", label: "Поджатие к уровню" },
-  ],
-  МИНУСЫ: [
-    { key: "ob-weak-reaction", label: "Слабая реакция на уровне" },
-    { key: "ob-prev-break", label: "Уровень недавно пробивался" },
-    { key: "ob-infected-zone", label: "Зараженная зона" },
-    { key: "ob-low-room", label: "Маленький запас хода" },
-    { key: "ob-high-volatility", label: "Повышенная волатильность" },
-    { key: "ob-no-accum", label: "Нет накопления у уровня" },
-    { key: "ob-sharp-approach", label: "Резкий подход к уровню" },
-    { key: "ob-atr50", label: "Пройдено >50% ATR" },
-    { key: "ob-btc-against", label: "Биткоин против" },
-    { key: "ob-weak-level", label: "Уровень слабый" },
-  ],
-  ОЖИДАЮ: [
-    { key: "ob-bounce-close", label: "Отбой с закрытием выше/ниже уровня" },
-    { key: "ob-accum-loc", label: "Накопление у уровня на лок ТФ" },
-    { key: "ob-volume-test", label: "Объём при тесте уровня снижается" },
-    { key: "ob-h1-confirm", label: "Подтверждение на H1" },
-    { key: "ob-volatility-fade", label: "Затухание волатильности" },
-    { key: "ob-engulf-bar", label: "Бар поглощения" },
-    { key: "ob-lp-no-break", label: "ЛП без пробоя уровня" },
-  ],
-};
+export async function loadChecklist(): Promise<void> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/checklist`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json() as { groups: ChecklistGroup[] };
+    loadedGroups = data.groups;
+    chrome.storage.local.set({ [CACHE_KEY]: loadedGroups });
+  } catch (err) {
+    console.warn('Checklist fetch failed, using cache:', err);
+    const stored = await chrome.storage.local.get(CACHE_KEY);
+    if (stored[CACHE_KEY]) {
+      loadedGroups = stored[CACHE_KEY] as ChecklistGroup[];
+    }
+  }
+}
 
 export function getChecklistForStrategy(strategy: Strategy): Checklist {
-  switch (strategy) {
-    case 'Пробой': return proboyChecklist;
-    case 'Ложный Пробой': return falseProboyChecklist;
-    case 'Отбой': return otboyChecklist;
-  }
+  const group = loadedGroups.find(g => g.name === strategy);
+  if (!group) return { ПРЕДПОСЫЛКИ: [], МИНУСЫ: [], ОЖИДАЮ: [] };
+  return {
+    ПРЕДПОСЫЛКИ: group.plus,
+    МИНУСЫ:      group.minus,
+    ОЖИДАЮ:      group.wait,
+  };
 }

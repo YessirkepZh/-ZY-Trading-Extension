@@ -19,6 +19,14 @@ export interface ChecklistSnapshot {
   wait: string[];   // выбранные ключи из ОЖИДАЮ
 }
 
+export interface ChecklistGroup {
+  id: number;
+  name: Strategy;
+  plus:  ChecklistItem[];
+  minus: ChecklistItem[];
+  wait:  ChecklistItem[];
+}
+
 export interface FormPayload {
   ticker: string;
   marketType: MarketType;

@@ -1,15 +1,15 @@
-import { getChecklistForStrategy } from './checklists/index.js';
+import { getChecklistForStrategy, loadChecklist } from './checklists/index.js';
 import { BASE_URL } from './config.js';
 import { captureScreenshot } from './screenshot.js';
 const ALL_STORAGE_KEYS = [
     'ticker', 'marketType', 'strategy', 'direction',
     'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
-    'entryRaw', 'customStop',
+    'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
     'checklistPlus', 'checklistMinus', 'checklistWait',
     'lastDealId',
 ];
 const SUBMIT_CLEAR_KEYS = [
-    'entryRaw', 'customStop',
+    'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
     'checklistPlus', 'checklistMinus', 'checklistWait',
 ];
 let selectedPlus = new Set();
@@ -311,6 +311,7 @@ function setupCollapsible(headerId, bodyId) {
 }
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function initForm() {
+    await loadChecklist();
     const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
     const tickerInput = document.getElementById('ticker');
     const marketTypeSelect = document.getElementById('marketType');
@@ -321,6 +322,8 @@ async function initForm() {
     const riskSumInput = document.getElementById('riskSum');
     const entryRawInput = document.getElementById('entryRaw');
     const customStopInput = document.getElementById('customStop');
+    const atrOverrideInput = document.getElementById('atrOverride');
+    const passRoadOverrideInput = document.getElementById('passRoadOverride');
     const inPlayInput = document.getElementById('inPlay');
     const dealIdInput = document.getElementById('deal-id');
     if (stored['ticker'])
@@ -343,6 +346,10 @@ async function initForm() {
         entryRawInput.value = String(stored['entryRaw']);
     if (stored['customStop'])
         customStopInput.value = String(stored['customStop']);
+    if (stored['atrOverride'])
+        atrOverrideInput.value = String(stored['atrOverride']);
+    if (stored['passRoadOverride'])
+        passRoadOverrideInput.value = String(stored['passRoadOverride']);
     if (stored['inPlay'])
         inPlayInput.checked = stored['inPlay'];
     if (stored['lastDealId'])
@@ -358,7 +365,6 @@ async function initForm() {
         tickerInput.value = tickerInput.value.toUpperCase();
         chrome.storage.local.set({ ticker: tickerInput.value });
     });
-    const atrOverrideInput = document.getElementById('atrOverride');
     const updateAtrRequired = () => {
         atrOverrideInput.required = marketTypeSelect.value === 'crypto';
     };
@@ -377,6 +383,12 @@ async function initForm() {
     });
     customStopInput.addEventListener('input', () => {
         chrome.storage.local.set({ customStop: customStopInput.value });
+    });
+    atrOverrideInput.addEventListener('input', () => {
+        chrome.storage.local.set({ atrOverride: atrOverrideInput.value });
+    });
+    passRoadOverrideInput.addEventListener('input', () => {
+        chrome.storage.local.set({ passRoadOverride: passRoadOverrideInput.value });
     });
     riskPercentInput.addEventListener('input', () => {
         chrome.storage.local.set({ riskPercent: riskPercentInput.value });

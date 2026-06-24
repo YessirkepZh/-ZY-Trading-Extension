@@ -1,4 +1,4 @@
-import { getChecklistForStrategy } from './checklists/index.js';
+import { getChecklistForStrategy, loadChecklist } from './checklists/index.js';
 import { Strategy, MarketType, Direction, ChecklistSnapshot, FormPayload } from './checklists/types.js';
 import { BASE_URL } from './config.js';
 import { captureScreenshot } from './screenshot.js';
@@ -6,13 +6,13 @@ import { captureScreenshot } from './screenshot.js';
 const ALL_STORAGE_KEYS = [
   'ticker', 'marketType', 'strategy', 'direction',
   'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
-  'entryRaw', 'customStop',
+  'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
   'checklistPlus', 'checklistMinus', 'checklistWait',
   'lastDealId',
 ] as const;
 
 const SUBMIT_CLEAR_KEYS: Array<typeof ALL_STORAGE_KEYS[number]> = [
-  'entryRaw', 'customStop',
+  'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
   'checklistPlus', 'checklistMinus', 'checklistWait',
 ];
 
@@ -368,6 +368,8 @@ function setupCollapsible(headerId: string, bodyId: string): void {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function initForm(): Promise<void> {
+  await loadChecklist();
+
   const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
 
   const tickerInput      = document.getElementById('ticker') as HTMLInputElement;
@@ -379,6 +381,8 @@ async function initForm(): Promise<void> {
   const riskSumInput     = document.getElementById('riskSum') as HTMLInputElement;
   const entryRawInput    = document.getElementById('entryRaw') as HTMLInputElement;
   const customStopInput  = document.getElementById('customStop') as HTMLInputElement;
+  const atrOverrideInput = document.getElementById('atrOverride') as HTMLInputElement;
+  const passRoadOverrideInput = document.getElementById('passRoadOverride') as HTMLInputElement;
   const inPlayInput      = document.getElementById('inPlay') as HTMLInputElement;
   const dealIdInput      = document.getElementById('deal-id') as HTMLInputElement;
 
@@ -394,6 +398,8 @@ async function initForm(): Promise<void> {
   if (stored['riskSum'])     riskSumInput.value     = String(stored['riskSum']);
   if (stored['entryRaw'])    entryRawInput.value    = String(stored['entryRaw']);
   if (stored['customStop'])  customStopInput.value  = String(stored['customStop']);
+  if (stored['atrOverride'])      atrOverrideInput.value      = String(stored['atrOverride']);
+  if (stored['passRoadOverride']) passRoadOverrideInput.value = String(stored['passRoadOverride']);
   if (stored['inPlay'])      inPlayInput.checked    = stored['inPlay'] as boolean;
   if (stored['lastDealId'])  dealIdInput.value      = stored['lastDealId'] as string;
 
@@ -410,8 +416,6 @@ async function initForm(): Promise<void> {
     tickerInput.value = tickerInput.value.toUpperCase();
     chrome.storage.local.set({ ticker: tickerInput.value });
   });
-
-  const atrOverrideInput = document.getElementById('atrOverride') as HTMLInputElement;
 
   const updateAtrRequired = (): void => {
     atrOverrideInput.required = marketTypeSelect.value === 'crypto';
@@ -436,6 +440,14 @@ async function initForm(): Promise<void> {
 
   customStopInput.addEventListener('input', () => {
     chrome.storage.local.set({ customStop: customStopInput.value });
+  });
+
+  atrOverrideInput.addEventListener('input', () => {
+    chrome.storage.local.set({ atrOverride: atrOverrideInput.value });
+  });
+
+  passRoadOverrideInput.addEventListener('input', () => {
+    chrome.storage.local.set({ passRoadOverride: passRoadOverrideInput.value });
   });
 
   riskPercentInput.addEventListener('input', () => {
