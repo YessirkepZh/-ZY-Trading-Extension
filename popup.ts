@@ -1,6 +1,6 @@
 import { getChecklistForStrategy, loadChecklist } from './checklists/index.js';
 import { Strategy, MarketType, Direction, ChecklistSnapshot, FormPayload } from './checklists/types.js';
-import { BASE_URL, API_KEY_STORAGE_KEY, getApiHeaders } from './config.js';
+import { BASE_URL, API_KEY_STORAGE_KEY, DEVICE_ID_STORAGE_KEY, getApiHeaders } from './config.js';
 import { captureScreenshot } from './screenshot.js';
 
 const ALL_STORAGE_KEYS = [
@@ -219,7 +219,7 @@ function showDealStatus(type: 'loading' | 'success' | 'error', message: string):
 // ─── Clear ────────────────────────────────────────────────────────────────────
 
 async function clearAll(): Promise<void> {
-  const keep = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
+  const keep = await chrome.storage.local.get([API_KEY_STORAGE_KEY, DEVICE_ID_STORAGE_KEY]);
   await chrome.storage.local.clear();
   await chrome.storage.local.set(keep);
 
