@@ -1,5 +1,5 @@
 import { Checklist, ChecklistGroup, Strategy } from './types.js';
-import { BASE_URL } from '../config.js';
+import { BASE_URL, getApiHeaders } from '../config.js';
 
 const CACHE_KEY = 'checklistCache';
 
@@ -7,7 +7,7 @@ let loadedGroups: ChecklistGroup[] = [];
 
 export async function loadChecklist(): Promise<void> {
   try {
-    const response = await fetch(`${BASE_URL}/api/checklist`);
+    const response = await fetch(`${BASE_URL}/api/checklist`, { headers: await getApiHeaders() });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json() as { groups: ChecklistGroup[] };
     loadedGroups = data.groups;

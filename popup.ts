@@ -1,6 +1,6 @@
 import { getChecklistForStrategy, loadChecklist } from './checklists/index.js';
 import { Strategy, MarketType, Direction, ChecklistSnapshot, FormPayload } from './checklists/types.js';
-import { BASE_URL } from './config.js';
+import { BASE_URL, API_KEY_STORAGE_KEY, getApiHeaders } from './config.js';
 import { captureScreenshot } from './screenshot.js';
 
 const ALL_STORAGE_KEYS = [
@@ -219,7 +219,9 @@ function showDealStatus(type: 'loading' | 'success' | 'error', message: string):
 // ─── Clear ────────────────────────────────────────────────────────────────────
 
 async function clearAll(): Promise<void> {
+  const keep = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
   await chrome.storage.local.clear();
+  await chrome.storage.local.set(keep);
 
   (document.getElementById('ticker') as HTMLInputElement).value = '';
   (document.getElementById('marketType') as HTMLSelectElement).value = 'crypto';
@@ -265,14 +267,15 @@ async function submitPayload(payload: FormPayload): Promise<void> {
   try {
     const response = await fetch(`${BASE_URL}/api/createNote`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getApiHeaders(),
       body: JSON.stringify({ ...payload, screenshot }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || `Ошибка ${response.status}`);
+      const message = typeof data.error === 'string' ? data.error : data.message;
+      throw new Error(message || `Ошибка ${response.status}`);
     }
 
     await chrome.storage.local.remove(SUBMIT_CLEAR_KEYS);
@@ -326,7 +329,7 @@ async function handleDealAction(
 
     const response = await fetch(`${BASE_URL}/api/updateDeal`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await getApiHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -385,6 +388,10 @@ async function initForm(): Promise<void> {
   const passRoadOverrideInput = document.getElementById('passRoadOverride') as HTMLInputElement;
   const inPlayInput      = document.getElementById('inPlay') as HTMLInputElement;
   const dealIdInput      = document.getElementById('deal-id') as HTMLInputElement;
+  const apiKeyInput      = document.getElementById('apiKey') as HTMLInputElement;
+
+  const storedApiKey = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
+  if (storedApiKey[API_KEY_STORAGE_KEY]) apiKeyInput.value = storedApiKey[API_KEY_STORAGE_KEY] as string;
 
   if (stored['ticker'])      tickerInput.value      = stored['ticker'] as string;
   if (stored['marketType'])  marketTypeSelect.value = stored['marketType'] as string;
@@ -468,6 +475,12 @@ async function initForm(): Promise<void> {
 
   inPlayInput.addEventListener('change', () => {
     chrome.storage.local.set({ inPlay: inPlayInput.checked });
+  });
+
+  apiKeyInput.addEventListener('change', async () => {
+    await chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKeyInput.value.trim() });
+    await loadChecklist();
+    renderChecklist(currentStrategy);
   });
 
   // — Direction —
