@@ -36,6 +36,8 @@ export interface FormPayload {
   customStop?: number;
   atrOverride?: number;
   passRoadOverride?: number;
+  /** Today's open from the ATR ZY indicator: lets the backend skip downloading candles */
+  dayOpen?: number;
   riskPercent: number;
   ratio: number;
   luftPercent: number;

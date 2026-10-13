@@ -8,8 +8,8 @@ import {
   getApiHeaders,
   getStoredApiKey,
 } from './config.js';
-import { buildLevels, captureChart } from './chartOverlay.js';
-import type { CalcLevels, ChartCapture, ChartLevel } from './chartOverlay.js';
+import { buildLevels, captureChart, readChartIndicator } from './chartOverlay.js';
+import type { CalcLevels, ChartCapture, ChartLevel, DealOutcome } from './chartOverlay.js';
 
 const ALL_STORAGE_KEYS = [
   'ticker', 'marketType', 'strategy', 'direction',
@@ -29,6 +29,9 @@ let selectedMinus: Set<string> = new Set();
 let selectedWait: Set<string> = new Set();
 let currentStrategy: Strategy = 'Пробой';
 let currentDirection: Direction = 'long';
+// Values last put into the form from the ATR ZY indicator; refreshed on submit unless edited by hand
+let indicatorFill: { atr: string; passRoad: string } | null = null;
+let chartDayOpen: number | undefined;
 
 // ─── Checklist ────────────────────────────────────────────────────────────────
 
@@ -187,6 +190,7 @@ function collectPayload(): FormPayload {
     luftPercent: parseFloat((document.getElementById('luftPercent') as HTMLInputElement).value),
     riskSum: parseFloat((document.getElementById('riskSum') as HTMLInputElement).value),
     inPlay: (document.getElementById('inPlay') as HTMLInputElement).checked,
+    dayOpen: chartDayOpen,
     checklist: checklist.plus.length + checklist.minus.length + checklist.wait.length > 0
       ? checklist
       : undefined,
@@ -201,6 +205,46 @@ function validatePayload(payload: FormPayload): string | null {
     return '⚠️ Для крипты укажи ATR из TradingView лейбла';
   }
   return null;
+}
+
+// ─── ATR ZY indicator ─────────────────────────────────────────────────────────
+
+/**
+ * Fills ticker, ATR and passRoad from the TradingView chart.
+ * withTicker: take the ticker of the active chart; otherwise read values for the ticker in the form.
+ */
+async function syncFromChart(withTicker: boolean): Promise<void> {
+  const tickerInput = document.getElementById('ticker') as HTMLInputElement;
+  const atrInput = document.getElementById('atrOverride') as HTMLInputElement;
+  const passRoadInput = document.getElementById('passRoadOverride') as HTMLInputElement;
+
+  const chart = await readChartIndicator(withTicker ? undefined : tickerInput.value);
+  if (!chart) return;
+
+  if (withTicker && chart.ticker && chart.ticker !== tickerInput.value) {
+    tickerInput.value = chart.ticker;
+    await chrome.storage.local.set({ ticker: chart.ticker });
+  }
+
+  chartDayOpen = chart.zy?.dayOpen;
+  if (!chart.zy) {
+    indicatorFill = null;
+    return;
+  }
+
+  const atr = String(Number(chart.zy.atr.toPrecision(8)));
+  const passRoad = chart.zy.passRoad.toFixed(2);
+  atrInput.value = atr;
+  passRoadInput.value = passRoad;
+  indicatorFill = { atr, passRoad };
+  await chrome.storage.local.set({ atrOverride: atr, passRoadOverride: passRoad });
+}
+
+/** True while ATR/passRoad still hold what the indicator put there */
+function indicatorFillIntact(): boolean {
+  return indicatorFill !== null
+    && (document.getElementById('atrOverride') as HTMLInputElement).value === indicatorFill.atr
+    && (document.getElementById('passRoadOverride') as HTMLInputElement).value === indicatorFill.passRoad;
 }
 
 // ─── Status ───────────────────────────────────────────────────────────────────
@@ -245,6 +289,7 @@ async function clearAll(): Promise<void> {
   (document.getElementById('inPlay') as HTMLInputElement).checked = false;
   (document.getElementById('deal-id') as HTMLInputElement).value = '';
   (document.getElementById('close-price') as HTMLInputElement).value = '';
+  (document.getElementById('actual-entry') as HTMLInputElement).value = '';
 
   currentStrategy = 'Пробой';
   setDirection('long');
@@ -281,7 +326,10 @@ async function submitPayload(payload: FormPayload): Promise<void> {
     showStatus('loading', 'Создаём скриншот...');
     let capture: ChartCapture | undefined;
     try {
-      capture = await captureChart(payload.ticker, buildLevels(payload.entryRaw, previewData.calcResult));
+      capture = await captureChart(
+        payload.ticker,
+        buildLevels(payload.entryRaw, previewData.calcResult, payload.direction),
+      );
     } catch (err) {
       console.warn('Screenshot failed:', err);
     }
@@ -326,23 +374,44 @@ async function submitPayload(payload: FormPayload): Promise<void> {
 
 // ─── Deal management ──────────────────────────────────────────────────────────
 
-/** Levels of a saved deal, to draw them on entry/close screenshots; null if unavailable */
-async function fetchDealLevels(dealId: number): Promise<{ ticker: string; levels: ChartLevel[] } | null> {
+interface SavedDeal {
+  ticker: string;
+  direction: Direction;
+  entryRaw: number;
+  calcResult: CalcLevels;
+  actualEntryPrice?: number;
+}
+
+/** Saved deal, to draw its levels on entry/close screenshots; null if unavailable */
+async function fetchDeal(dealId: number): Promise<SavedDeal | null> {
   try {
     const response = await fetch(`${BASE_URL}/api/deals/${dealId}`, { headers: await getApiHeaders() });
     if (!response.ok) return null;
-    const data = await response.json() as { deal?: { ticker: string; entryRaw: number; calcResult: CalcLevels } };
-    if (!data.deal) return null;
-    return { ticker: data.deal.ticker, levels: buildLevels(data.deal.entryRaw, data.deal.calcResult) };
+    const data = await response.json() as { deal?: SavedDeal };
+    return data.deal ?? null;
   } catch {
     return null;
   }
 }
 
+function dealLevels(deal: SavedDeal | null, outcome: DealOutcome): ChartLevel[] | null {
+  if (!deal) return null;
+  return buildLevels(deal.entryRaw, deal.calcResult, deal.direction, {
+    actualEntry: outcome.actualEntry ?? deal.actualEntryPrice,
+    closePrice: outcome.closePrice,
+  });
+}
+
+/** Optional real fill price; empty = filled at the planned entry */
+function readActualEntry(): number | undefined {
+  const value = parseFloat((document.getElementById('actual-entry') as HTMLInputElement).value);
+  return value > 0 ? value : undefined;
+}
+
 async function handleDealAction(
   status: 'entered' | 'missed' | 'closed',
   withScreenshot = true,
-  extra: { dealResult?: string; closePrice?: number } = {},
+  extra: { dealResult?: string; closePrice?: number; actualEntryPrice?: number } = {},
 ): Promise<void> {
   const dealId = parseInt((document.getElementById('deal-id') as HTMLInputElement).value);
   if (!dealId || isNaN(dealId)) {
@@ -354,8 +423,9 @@ async function handleDealAction(
   if (withScreenshot) {
     showDealStatus('loading', 'Создаём скриншот...');
     try {
-      const deal = await fetchDealLevels(dealId);
-      screenshot = (await captureChart(deal?.ticker ?? '', deal?.levels ?? null)).screenshot;
+      const deal = await fetchDeal(dealId);
+      const levels = dealLevels(deal, { actualEntry: extra.actualEntryPrice, closePrice: extra.closePrice });
+      screenshot = (await captureChart(deal?.ticker ?? '', levels)).screenshot;
     } catch (err) {
       console.warn('Screenshot failed:', err);
     }
@@ -390,6 +460,7 @@ async function handleDealAction(
     if (status === 'closed' || status === 'missed') {
       (document.getElementById('deal-id') as HTMLInputElement).value = '';
       (document.getElementById('close-price') as HTMLInputElement).value = '';
+      (document.getElementById('actual-entry') as HTMLInputElement).value = '';
       await chrome.storage.local.remove('lastDealId');
     }
 
@@ -456,6 +527,9 @@ async function initForm(): Promise<void> {
   // — Save on change listeners —
 
   tickerInput.addEventListener('input', () => {
+    // Indicator values belong to the previous ticker
+    indicatorFill = null;
+    chartDayOpen = undefined;
     tickerInput.value = tickerInput.value.toUpperCase();
     chrome.storage.local.set({ ticker: tickerInput.value });
   });
@@ -539,7 +613,9 @@ async function initForm(): Promise<void> {
 
   // — Submit —
 
-  document.getElementById('submit-btn')!.addEventListener('click', () => {
+  document.getElementById('submit-btn')!.addEventListener('click', async () => {
+    // passRoad moves with the price — take the current value unless the trader typed their own
+    if (indicatorFillIntact()) await syncFromChart(false);
     const payload = collectPayload();
     const error = validatePayload(payload);
     if (error) {
@@ -552,7 +628,7 @@ async function initForm(): Promise<void> {
   // — Deal actions —
 
   document.getElementById('btn-entered')?.addEventListener('click', () => {
-    handleDealAction('entered');
+    handleDealAction('entered', true, { actualEntryPrice: readActualEntry() });
   });
 
   document.getElementById('btn-missed')?.addEventListener('click', () => {
@@ -568,7 +644,7 @@ async function initForm(): Promise<void> {
       return;
     }
 
-    handleDealAction('closed', true, { dealResult, closePrice });
+    handleDealAction('closed', true, { dealResult, closePrice, actualEntryPrice: readActualEntry() });
   });
 }
 
@@ -598,6 +674,8 @@ async function showApp(): Promise<void> {
     await loadChecklist();
     renderChecklist(currentStrategy);
   }
+  await syncFromChart(true);
+  if (indicatorFill) showStatus('success', '📏 ATR и passRoad взяты из индикатора ATR ZY');
 }
 
 async function showAuth(message: string | null = null): Promise<void> {
