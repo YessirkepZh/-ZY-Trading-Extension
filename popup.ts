@@ -8,7 +8,8 @@ import {
   getApiHeaders,
   getStoredApiKey,
 } from './config.js';
-import { captureScreenshot } from './screenshot.js';
+import { buildLevels, captureChart } from './chartOverlay.js';
+import type { CalcLevels, ChartCapture, ChartLevel } from './chartOverlay.js';
 
 const ALL_STORAGE_KEYS = [
   'ticker', 'marketType', 'strategy', 'direction',
@@ -256,40 +257,56 @@ async function clearAll(): Promise<void> {
 
 // ─── Submit ───────────────────────────────────────────────────────────────────
 
+function responseError(data: { error?: unknown; message?: unknown }, status: number): string {
+  if (typeof data.error === 'string') return data.error;
+  if (typeof data.message === 'string') return data.message;
+  return `Ошибка ${status}`;
+}
+
 async function submitPayload(payload: FormPayload): Promise<void> {
   const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
   submitBtn.disabled = true;
 
-  showStatus('loading', 'Создаём скриншот...');
-
-  let screenshot: string | undefined;
   try {
-    screenshot = await captureScreenshot();
-  } catch (err) {
-    console.warn('Screenshot failed:', err);
-  }
+    showStatus('loading', 'Расчёт уровней...');
+    const preview = await fetch(`${BASE_URL}/api/previewSetup`, {
+      method: 'POST',
+      headers: await getApiHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (await handleUnauthorized(preview)) return;
+    const previewData = await preview.json() as { calcResult?: CalcLevels; error?: unknown; message?: unknown };
+    if (!preview.ok || !previewData.calcResult) throw new Error(responseError(previewData, preview.status));
 
-  showStatus('loading', 'Отправка...');
+    showStatus('loading', 'Создаём скриншот...');
+    let capture: ChartCapture | undefined;
+    try {
+      capture = await captureChart(payload.ticker, buildLevels(payload.entryRaw, previewData.calcResult));
+    } catch (err) {
+      console.warn('Screenshot failed:', err);
+    }
 
-  try {
+    showStatus('loading', 'Отправка...');
     const response = await fetch(`${BASE_URL}/api/createNote`, {
       method: 'POST',
       headers: await getApiHeaders(),
-      body: JSON.stringify({ ...payload, screenshot }),
+      body: JSON.stringify({
+        ...payload,
+        screenshot: capture?.screenshot,
+        screenshotFocus: capture?.screenshotFocus,
+        chart: capture?.chart,
+      }),
     });
 
     if (await handleUnauthorized(response)) return;
     const data = await response.json();
 
-    if (!response.ok) {
-      const message = typeof data.error === 'string' ? data.error : data.message;
-      throw new Error(message || `Ошибка ${response.status}`);
-    }
+    if (!response.ok) throw new Error(responseError(data, response.status));
 
     await chrome.storage.local.remove(SUBMIT_CLEAR_KEYS);
     await chrome.storage.local.set({ lastDealId: String(data.id) });
 
-    showStatus('success', `✅ Отправлено! ID: #${data.id}`);
+    showStatus('success', `✅ Отправлено! ID: #${data.id}${capture?.warning ? ` · ${capture.warning}` : ''}`);
 
     (document.getElementById('entryRaw') as HTMLInputElement).value = '';
     (document.getElementById('customStop') as HTMLInputElement).value = '';
@@ -309,6 +326,19 @@ async function submitPayload(payload: FormPayload): Promise<void> {
 
 // ─── Deal management ──────────────────────────────────────────────────────────
 
+/** Levels of a saved deal, to draw them on entry/close screenshots; null if unavailable */
+async function fetchDealLevels(dealId: number): Promise<{ ticker: string; levels: ChartLevel[] } | null> {
+  try {
+    const response = await fetch(`${BASE_URL}/api/deals/${dealId}`, { headers: await getApiHeaders() });
+    if (!response.ok) return null;
+    const data = await response.json() as { deal?: { ticker: string; entryRaw: number; calcResult: CalcLevels } };
+    if (!data.deal) return null;
+    return { ticker: data.deal.ticker, levels: buildLevels(data.deal.entryRaw, data.deal.calcResult) };
+  } catch {
+    return null;
+  }
+}
+
 async function handleDealAction(
   status: 'entered' | 'missed' | 'closed',
   withScreenshot = true,
@@ -324,7 +354,8 @@ async function handleDealAction(
   if (withScreenshot) {
     showDealStatus('loading', 'Создаём скриншот...');
     try {
-      screenshot = await captureScreenshot();
+      const deal = await fetchDealLevels(dealId);
+      screenshot = (await captureChart(deal?.ticker ?? '', deal?.levels ?? null)).screenshot;
     } catch (err) {
       console.warn('Screenshot failed:', err);
     }

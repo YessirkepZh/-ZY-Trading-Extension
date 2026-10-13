@@ -2,11 +2,12 @@
   "manifest_version": 3,
   "name": "ZY Trading",
   "description": "Форма сетапа для торговой системы ZY",
-  "version": "2.1",
-  "permissions": ["storage", "tabs", "activeTab"],
+  "version": "2.2",
+  "permissions": ["storage", "tabs", "activeTab", "scripting"],
   "host_permissions": [
     "http://localhost:3001/*",
-    "https://zy-trading-backend-production.up.railway.app/*"
+    "https://zy-trading-backend-production.up.railway.app/*",
+    "https://*.tradingview.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
