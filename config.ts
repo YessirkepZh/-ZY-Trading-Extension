@@ -15,12 +15,39 @@ async function getDeviceId(): Promise<string> {
   return deviceId;
 }
 
-export async function getApiHeaders(): Promise<Record<string, string>> {
+export async function getStoredApiKey(): Promise<string | undefined> {
   const stored = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
-  const apiKey = stored[API_KEY_STORAGE_KEY] as string | undefined;
+  return stored[API_KEY_STORAGE_KEY] as string | undefined;
+}
+
+export async function getApiHeaders(apiKey?: string): Promise<Record<string, string>> {
+  const key = apiKey ?? await getStoredApiKey();
   return {
     'Content-Type': 'application/json',
     'x-device-id': await getDeviceId(),
-    ...(apiKey ? { 'x-api-key': apiKey } : {}),
+    ...(key ? { 'x-api-key': key } : {}),
   };
+}
+
+export type ApiKeyCheck =
+  | { status: 'ok' }
+  | { status: 'rejected'; message: string }
+  | { status: 'offline' };
+
+/** Проверяет токен на бэкенде; при первом запросе токен привязывается к этому устройству */
+export async function checkApiKey(apiKey: string): Promise<ApiKeyCheck> {
+  let response: Response;
+  try {
+    response = await fetch(`${BASE_URL}/api/auth/me`, { headers: await getApiHeaders(apiKey) });
+  } catch {
+    return { status: 'offline' };
+  }
+  if (response.ok) return { status: 'ok' };
+  if (response.status !== 401 && response.status !== 403) return { status: 'offline' };
+
+  const data = await response.json().catch(() => ({})) as { error?: unknown };
+  const message = response.status === 403 && typeof data.error === 'string'
+    ? data.error
+    : 'Неверный или отозванный токен';
+  return { status: 'rejected', message };
 }

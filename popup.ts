@@ -1,6 +1,13 @@
 import { getChecklistForStrategy, loadChecklist } from './checklists/index.js';
 import { Strategy, MarketType, Direction, ChecklistSnapshot, FormPayload } from './checklists/types.js';
-import { BASE_URL, API_KEY_STORAGE_KEY, DEVICE_ID_STORAGE_KEY, getApiHeaders } from './config.js';
+import {
+  BASE_URL,
+  API_KEY_STORAGE_KEY,
+  DEVICE_ID_STORAGE_KEY,
+  checkApiKey,
+  getApiHeaders,
+  getStoredApiKey,
+} from './config.js';
 import { captureScreenshot } from './screenshot.js';
 
 const ALL_STORAGE_KEYS = [
@@ -271,6 +278,7 @@ async function submitPayload(payload: FormPayload): Promise<void> {
       body: JSON.stringify({ ...payload, screenshot }),
     });
 
+    if (await handleUnauthorized(response)) return;
     const data = await response.json();
 
     if (!response.ok) {
@@ -333,6 +341,7 @@ async function handleDealAction(
       body: JSON.stringify(body),
     });
 
+    if (await handleUnauthorized(response)) return;
     const data = await response.json();
 
     if (!response.ok) {
@@ -388,10 +397,6 @@ async function initForm(): Promise<void> {
   const passRoadOverrideInput = document.getElementById('passRoadOverride') as HTMLInputElement;
   const inPlayInput      = document.getElementById('inPlay') as HTMLInputElement;
   const dealIdInput      = document.getElementById('deal-id') as HTMLInputElement;
-  const apiKeyInput      = document.getElementById('apiKey') as HTMLInputElement;
-
-  const storedApiKey = await chrome.storage.local.get(API_KEY_STORAGE_KEY);
-  if (storedApiKey[API_KEY_STORAGE_KEY]) apiKeyInput.value = storedApiKey[API_KEY_STORAGE_KEY] as string;
 
   if (stored['ticker'])      tickerInput.value      = stored['ticker'] as string;
   if (stored['marketType'])  marketTypeSelect.value = stored['marketType'] as string;
@@ -477,12 +482,6 @@ async function initForm(): Promise<void> {
     chrome.storage.local.set({ inPlay: inPlayInput.checked });
   });
 
-  apiKeyInput.addEventListener('change', async () => {
-    await chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKeyInput.value.trim() });
-    await loadChecklist();
-    renderChecklist(currentStrategy);
-  });
-
   // — Direction —
 
   document.getElementById('btn-long')!.addEventListener('click', () => {
@@ -542,6 +541,96 @@ async function initForm(): Promise<void> {
   });
 }
 
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+let formReady = false;
+
+function setView(authorized: boolean): void {
+  document.getElementById('auth-view')!.hidden = authorized;
+  document.getElementById('app-view')!.hidden = !authorized;
+  document.getElementById('clear-btn')!.hidden = !authorized;
+  document.getElementById('logout-btn')!.hidden = !authorized;
+}
+
+function showAuthStatus(message: string | null): void {
+  const el = document.getElementById('auth-status')!;
+  el.className = message ? 'status error' : 'status hidden';
+  el.textContent = message ? `❌ ${message}` : '';
+}
+
+async function showApp(): Promise<void> {
+  setView(true);
+  if (!formReady) {
+    formReady = true;
+    await initForm();
+  } else {
+    await loadChecklist();
+    renderChecklist(currentStrategy);
+  }
+}
+
+async function showAuth(message: string | null = null): Promise<void> {
+  await chrome.storage.local.remove(API_KEY_STORAGE_KEY);
+  (document.getElementById('apiKey') as HTMLInputElement).value = '';
+  showAuthStatus(message);
+  setView(false);
+  document.getElementById('apiKey')!.focus();
+}
+
+/** Токен отозвали во время работы — возвращаем на экран входа */
+async function handleUnauthorized(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+  await showAuth('Токен недействителен или отозван, войдите заново');
+  return true;
+}
+
+function setupAuth(): void {
+  const form = document.getElementById('auth-form') as HTMLFormElement;
+  const input = document.getElementById('apiKey') as HTMLInputElement;
+  const button = document.getElementById('auth-btn') as HTMLButtonElement;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const apiKey = input.value.trim();
+    if (!apiKey) return;
+
+    button.disabled = true;
+    showAuthStatus(null);
+    const result = await checkApiKey(apiKey);
+    button.disabled = false;
+
+    if (result.status === 'ok') {
+      await chrome.storage.local.set({ [API_KEY_STORAGE_KEY]: apiKey });
+      await showApp();
+    } else if (result.status === 'rejected') {
+      showAuthStatus(result.message);
+    } else {
+      showAuthStatus('Сервер недоступен, попробуйте позже');
+    }
+  });
+
+  document.getElementById('logout-btn')!.addEventListener('click', () => {
+    showAuth();
+  });
+}
+
+async function start(): Promise<void> {
+  setupAuth();
+  const apiKey = await getStoredApiKey();
+  if (!apiKey) {
+    await showAuth();
+    return;
+  }
+
+  const result = await checkApiKey(apiKey);
+  // Без сети пускаем с сохранённым токеном: форма работает на кэше чек-листа
+  if (result.status === 'rejected') {
+    await showAuth(result.message);
+  } else {
+    await showApp();
+  }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  initForm();
+  start();
 });

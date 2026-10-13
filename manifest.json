@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ZY Trading",
   "description": "Форма сетапа для торговой системы ZY",
-  "version": "2.0",
+  "version": "2.1",
   "permissions": ["storage", "tabs", "activeTab"],
   "host_permissions": [
     "http://localhost:3001/*",

@@ -11,10 +11,28 @@
     <div class="header">
       <span class="logo">ZY Trading</span>
       <div class="header-right">
-        <button id="clear-btn" class="clear-btn">Очистить</button>
-        <span class="version">v2.0</span>
+        <button id="clear-btn" class="clear-btn" hidden>Очистить</button>
+        <button id="logout-btn" class="clear-btn" hidden>Выйти</button>
+        <span class="version">v2.1</span>
       </div>
     </div>
+
+    <!-- Вход по токену -->
+    <section class="section" id="auth-view" hidden>
+      <form id="auth-form" class="auth-form">
+        <div class="field">
+          <label for="apiKey">Токен доступа</label>
+          <input type="password" id="apiKey" placeholder="zyt_..." autocomplete="off" required aria-describedby="auth-hint" />
+        </div>
+        <div class="tv-hint" id="auth-hint">
+          Создайте токен на сайте ZY Trading в разделе «Доступ»
+        </div>
+        <button type="submit" id="auth-btn" class="submit-btn">Войти</button>
+        <div id="auth-status" class="status hidden" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <div id="app-view" hidden>
 
     <!-- Секция 1: Основные параметры -->
     <section class="section">
@@ -121,12 +139,6 @@
             <span>InPlay</span>
           </label>
         </div>
-        <div class="row">
-          <div class="field">
-            <label for="apiKey">Ключ доступа</label>
-            <input type="password" id="apiKey" autocomplete="off" />
-          </div>
-        </div>
       </div>
     </section>
 
@@ -218,6 +230,8 @@
 
     <!-- Статус -->
     <div id="status" class="status hidden"></div>
+
+    </div>
 
   </div>
   <script type="module" src="popup.js"></script>
