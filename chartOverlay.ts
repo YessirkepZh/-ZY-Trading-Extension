@@ -85,6 +85,9 @@ function formatSigned(value: number, digits: number): string {
 
 // Claude downsizes anything bigger anyway; keeps uploads well under its 5 MB image limit
 const MAX_IMAGE_SIDE = 2560;
+// About half the size of PNG with candles and price labels still crisp
+const IMAGE_TYPE = 'image/webp';
+const IMAGE_QUALITY = 0.8;
 
 export function buildLevels(
   entryRaw: number,
@@ -494,7 +497,18 @@ function exportCanvas(source: HTMLCanvasElement, crop?: Rect): string {
   const ctx = out.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D is not available');
   ctx.drawImage(source, area.x, area.y, area.w, area.h, 0, 0, out.width, out.height);
-  return out.toDataURL('image/png');
+  return out.toDataURL(IMAGE_TYPE, IMAGE_QUALITY);
+}
+
+async function compress(dataUrl: string): Promise<string> {
+  const img = await loadImage(dataUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D is not available');
+  ctx.drawImage(img, 0, 0);
+  return exportCanvas(canvas);
 }
 
 async function annotate(
@@ -553,15 +567,17 @@ export async function captureChart(ticker: string, levels: ChartLevel[] | null):
         const before = await readLayout(tabId);
         const screenshot = await captureScreenshot();
         const after = await readLayout(tabId);
-        if (!before || !after) return { screenshot, warning: 'График TradingView не распознан — линии не нарисованы' };
+        if (!before || !after) {
+          return { screenshot: await compress(screenshot), warning: 'График TradingView не распознан — линии не нарисованы' };
+        }
         if (!sameLayout(before, after) && attempt < 2) continue;
 
         const result = await annotate(screenshot, after, ticker, levels);
-        return result ?? { screenshot, warning: `На графике нет ${ticker} — линии не нарисованы` };
+        return result ?? { screenshot: await compress(screenshot), warning: `На графике нет ${ticker} — линии не нарисованы` };
       }
     }
   } catch (err) {
     console.warn('Chart overlay failed:', err);
   }
-  return { screenshot: await captureScreenshot() };
+  return { screenshot: await compress(await captureScreenshot()) };
 }
