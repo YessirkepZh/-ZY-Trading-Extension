@@ -181,44 +181,52 @@
 
         <div class="row">
           <div class="field">
-            <label>ID сделки</label>
-            <input type="number" id="deal-id" placeholder="123" min="1" />
-          </div>
-          <div class="field">
-            <label>Фактический вход</label>
-            <input type="number" id="actual-entry" placeholder="если отличается" step="any" />
+            <label for="deal-select">Сделка</label>
+            <select id="deal-select"></select>
           </div>
         </div>
+        <div class="tv-hint" id="deal-empty" hidden>Нет открытых сделок: ждут входа только сетапы за последние 3 дня</div>
 
-        <!-- Кнопки входа/пропуска -->
-        <div class="deal-actions">
-          <button id="btn-entered" class="deal-btn entered">
-            📸 Вошёл
-          </button>
-          <button id="btn-missed" class="deal-btn missed">
-            ⏭ Пропустил
-          </button>
-        </div>
-
-        <!-- Закрытие сделки -->
-        <div class="close-deal-section">
+        <!-- Вход: сетап ждёт исполнения ордера -->
+        <div id="entry-block" hidden>
           <div class="row">
             <div class="field">
-              <label>Цена закрытия</label>
-              <input type="number" id="close-price" placeholder="0.00" step="any" />
-            </div>
-            <div class="field">
-              <label>Результат</label>
-              <select id="deal-result">
-                <option value="win">Win ✅</option>
-                <option value="loss">Loss ❌</option>
-                <option value="breakeven">BE ➖</option>
-              </select>
+              <label for="actual-entry">Цена входа</label>
+              <input type="number" id="actual-entry" placeholder="цена ордера" step="any" />
             </div>
           </div>
-          <button id="btn-close-deal" class="deal-btn close">
-            📸 Закрыть сделку
-          </button>
+
+          <div class="row">
+            <label class="checkbox-label">
+              <input type="checkbox" id="entry-now" checked />
+              <span>Вход сейчас</span>
+            </label>
+          </div>
+          <div class="row" id="entry-time-row" hidden>
+            <div class="field">
+              <label for="entry-time">Время входа</label>
+              <input type="datetime-local" id="entry-time" />
+            </div>
+          </div>
+
+          <div class="deal-actions">
+            <button id="btn-entered" class="deal-btn entered">
+              📸 Вошёл
+            </button>
+            <button id="btn-missed" class="deal-btn missed">
+              ⏭ Пропустил
+            </button>
+          </div>
+        </div>
+
+        <!-- Выход: позиция открыта -->
+        <div id="exit-block" hidden>
+          <div class="exit-buttons" id="exit-buttons"></div>
+          <label for="close-price">Другая цена</label>
+          <div class="row close-row">
+            <input type="number" id="close-price" placeholder="0.00" step="any" />
+            <button id="btn-close-deal" class="deal-btn close">📸 Закрыть сделку</button>
+          </div>
         </div>
 
         <!-- Статус операции -->

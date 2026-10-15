@@ -196,6 +196,10 @@ input:focus, select:focus { border-color: #555; }
   color: #ccc;
 }
 
+.checkbox-label input { width: auto; }
+
+.row[hidden] { display: none; }
+
 /* Submit button */
 .submit-btn {
   width: 100%;
@@ -273,11 +277,34 @@ input:focus, select:focus { border-color: #555; }
 }
 .deal-btn.close:hover { background: #4a2a2a; }
 
-.close-deal-section {
-  border-top: 1px solid #333;
-  padding-top: 10px;
-  margin-top: 4px;
+.exit-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
 }
+
+.exit-buttons .deal-btn {
+  flex: 1 1 calc(33% - 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.exit-price { font-size: 11px; opacity: 0.8; font-weight: normal; }
+
+.close-row { margin-top: 4px; }
+.close-row input { flex: 1; }
+.close-row .deal-btn.close { flex: 1; width: auto; margin-top: 0; }
+
+.deal-btn.exit-sl { background: #3a1a1a; border-color: #6a2d2d; color: #f44336; }
+.deal-btn.exit-sl:hover { background: #4a2a2a; }
+.deal-btn.exit-tp { background: #1a3a1a; border-color: #2d6a2d; color: #4caf50; }
+.deal-btn.exit-tp:hover { background: #2a4a2a; }
+.deal-btn.exit-be { background: #2a2a2a; border-color: #444; color: #ccc; }
+.deal-btn.exit-be:hover { background: #333; }
+.deal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .from-tv {
   color: #4a9eff;

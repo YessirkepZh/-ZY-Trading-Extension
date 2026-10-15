@@ -89,18 +89,31 @@ const MAX_IMAGE_SIDE = 2560;
 const IMAGE_TYPE = 'image/webp';
 const IMAGE_QUALITY = 0.8;
 
+export interface DealPlan {
+  entry: number;
+  stop: number;
+  takes: Array<number | undefined>;
+}
+
+/** Orders the trader actually places: the own-stop plan when a stop was set, else the ATR one */
+export function dealPlan(calc: CalcLevels): DealPlan {
+  if (calc.entryPriceByStop !== undefined && calc.stopLossByStop !== undefined) {
+    return {
+      entry: calc.entryPriceByStop,
+      stop: calc.stopLossByStop,
+      takes: [calc.takeProfitByStop, calc.takeProfitByStop2, calc.takeProfitByStop3],
+    };
+  }
+  return { entry: calc.entryPrice, stop: calc.stopLossDefault, takes: [calc.takeProfitDefault] };
+}
+
 export function buildLevels(
   entryRaw: number,
   calc: CalcLevels,
   direction: 'long' | 'short',
   outcome: DealOutcome = {},
 ): ChartLevel[] {
-  const ownStop = calc.entryPriceByStop !== undefined && calc.stopLossByStop !== undefined;
-  const entry = ownStop && calc.entryPriceByStop !== undefined ? calc.entryPriceByStop : calc.entryPrice;
-  const stop = ownStop && calc.stopLossByStop !== undefined ? calc.stopLossByStop : calc.stopLossDefault;
-  const takes = ownStop
-    ? [calc.takeProfitByStop, calc.takeProfitByStop2, calc.takeProfitByStop3]
-    : [calc.takeProfitDefault];
+  const { entry, stop, takes } = dealPlan(calc);
   const sign = direction === 'long' ? 1 : -1;
   // R of targets and result is measured from the real fill
   const filled = outcome.actualEntry ?? entry;
