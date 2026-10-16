@@ -339,7 +339,6 @@ async function submitPayload(payload: FormPayload): Promise<void> {
       body: JSON.stringify({
         ...payload,
         screenshot: capture?.screenshot,
-        screenshotFocus: capture?.screenshotFocus,
         chart: capture?.chart,
       }),
     });
@@ -379,6 +378,7 @@ interface SavedDeal {
   actualEntryPrice?: number;
   status: string;
   createdAt: string;
+  enteredAt?: string;
 }
 
 type DealResult = 'win' | 'loss' | 'breakeven';
@@ -447,6 +447,7 @@ function dealLevels(deal: SavedDeal, outcome: DealOutcome): ChartLevel[] {
   return buildLevels(deal.entryRaw, deal.calcResult, deal.direction, {
     actualEntry: outcome.actualEntry ?? deal.actualEntryPrice,
     closePrice: outcome.closePrice,
+    enteredAt: outcome.enteredAt ?? deal.enteredAt,
   });
 }
 
@@ -562,7 +563,15 @@ async function sendDealAction(
   if (withScreenshot) {
     showDealStatus('loading', 'Создаём скриншот...');
     try {
-      const levels = dealLevels(deal, { actualEntry: extra.actualEntryPrice, closePrice: extra.closePrice });
+      const enteredAt = extra.enteredAt
+        ?? deal.enteredAt
+        // "Вход сейчас" — clock on the screenshot is the moment of the click
+        ?? (status === 'entered' ? new Date().toISOString() : undefined);
+      const levels = dealLevels(deal, {
+        actualEntry: extra.actualEntryPrice,
+        closePrice: extra.closePrice,
+        enteredAt,
+      });
       screenshot = (await captureChart(deal.ticker, levels)).screenshot;
     } catch (err) {
       console.warn('Screenshot failed:', err);

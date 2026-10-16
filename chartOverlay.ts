@@ -27,6 +27,8 @@ export interface DealOutcome {
   /** Real fill; absent = filled at the planned entry */
   actualEntry?: number;
   closePrice?: number;
+  /** Fill time, shown on the entry marker */
+  enteredAt?: string;
 }
 
 /** Sent to the backend so Claude knows what each pane of the screenshot shows */
@@ -38,8 +40,8 @@ export interface ChartPaneInfo {
 }
 
 export interface ChartCapture {
+  /** One WebP: full layout, levels drawn on the lowest timeframe of the ticker */
   screenshot: string;
-  screenshotFocus?: string;
   chart?: { panes: ChartPaneInfo[] };
   /** Why the levels were not drawn, to show in the popup */
   warning?: string;
@@ -87,7 +89,14 @@ function formatSigned(value: number, digits: number): string {
 const MAX_IMAGE_SIDE = 2560;
 // About half the size of PNG with candles and price labels still crisp
 const IMAGE_TYPE = 'image/webp';
-const IMAGE_QUALITY = 0.8;
+const IMAGE_QUALITY = 0.85;
+
+function formatClock(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
 
 export interface DealPlan {
   entry: number;
@@ -119,13 +128,21 @@ export function buildLevels(
   const filled = outcome.actualEntry ?? entry;
   const risk = Math.abs(filled - stop);
 
+  const clock = formatClock(outcome.enteredAt);
   const levels: ChartLevel[] = [];
   if (entryRaw !== entry) levels.push({ kind: 'level', price: entryRaw, label: 'Уровень' });
-  levels.push({ kind: 'entry', price: entry, label: outcome.actualEntry !== undefined ? 'Entry план' : 'Entry' });
   if (outcome.actualEntry !== undefined && outcome.actualEntry !== entry) {
+    levels.push({ kind: 'entry', price: entry, label: 'Entry план' });
     // Positive = worse for the trader, same convention as the backend
     const slippage = sign * (outcome.actualEntry - entry) / entry * 100;
-    levels.push({ kind: 'actual', price: outcome.actualEntry, label: `Вход факт · ${formatSigned(slippage, 2)}%` });
+    const slip = ` · ${formatSigned(slippage, 2)}%`;
+    levels.push({
+      kind: 'actual',
+      price: outcome.actualEntry,
+      label: `Вход${slip}${clock ? ` · ${clock}` : ''}`,
+    });
+  } else {
+    levels.push({ kind: 'entry', price: filled, label: `Вход${clock ? ` · ${clock}` : ''}` });
   }
   levels.push({ kind: 'sl', price: stop, label: 'SL' });
   takes.forEach((price, i) => {
@@ -470,12 +487,25 @@ function drawChartLevels(
     }
 
     ctx.strokeStyle = color;
-    ctx.lineWidth = (isEntry ? 2 : 1.25) * k;
+    ctx.lineWidth = 2 * k;
     ctx.setLineDash(level.kind === 'level' ? [6 * k, 4 * k] : []);
     ctx.beginPath();
     ctx.moveTo(left, y);
     ctx.lineTo(right, y);
     ctx.stroke();
+
+    // Fill / close marker near the right edge — price + time are on the label
+    if (level.kind === 'entry' || level.kind === 'actual' || level.kind === 'close') {
+      const r = 4.5 * k;
+      const cx = right - 18 * k;
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(cx, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5 * k;
+      ctx.stroke();
+    }
 
     // Keep labels of close levels from overlapping
     let labelY = y;
@@ -486,16 +516,13 @@ function drawChartLevels(
   }
   ctx.setLineDash([]);
 
-  // Levels outside the visible range: only worth a marker on the entry timeframe.
-  // Centered, so the corners stay free for the legend and indicator tables
-  if (isEntry) {
-    const center = (left + right) / 2;
-    if (offscreen.above.length > 0) {
-      drawLabel(ctx, `↑ ${offscreen.above.join(' · ')}`, center, top + fontSize, COLORS.level, fontSize, true);
-    }
-    if (offscreen.below.length > 0) {
-      drawLabel(ctx, `↓ ${offscreen.below.join(' · ')}`, center, bottom - fontSize, COLORS.level, fontSize, true);
-    }
+  // Levels outside the visible range: markers at the pane edge
+  const center = (left + right) / 2;
+  if (offscreen.above.length > 0) {
+    drawLabel(ctx, `↑ ${offscreen.above.join(' · ')}`, center, top + fontSize, COLORS.level, fontSize, true);
+  }
+  if (offscreen.below.length > 0) {
+    drawLabel(ctx, `↓ ${offscreen.below.join(' · ')}`, center, bottom - fontSize, COLORS.level, fontSize, true);
   }
 
   ctx.restore();
@@ -547,20 +574,16 @@ async function annotate(
   if (!ctx) throw new Error('Canvas 2D is not available');
   ctx.drawImage(img, 0, 0);
 
-  for (const chart of annotated) {
-    drawChartLevels(ctx, chart, levels, k, chart === entryChart);
-  }
-
-  const w = entryChart.widget;
+  // One photo of the whole layout; lines only on the lowest timeframe of the ticker
+  drawChartLevels(ctx, entryChart, levels, k, true);
 
   return {
     screenshot: exportCanvas(canvas),
-    screenshotFocus: exportCanvas(canvas, { x: w.x * k, y: w.y * k, w: w.w * k, h: w.h * k }),
     chart: {
       panes: layout.charts.map((c) => ({
         symbol: c.symbol,
         interval: c.interval,
-        annotated: annotated.includes(c),
+        annotated: c === entryChart,
         entry: c === entryChart,
       })),
     },
