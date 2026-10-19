@@ -10,14 +10,21 @@ import {
 } from './config.js';
 import { buildLevels, captureChart, dealPlan, readChartIndicator } from './chartOverlay.js';
 import type { CalcLevels, ChartCapture, ChartLevel, DealOutcome } from './chartOverlay.js';
+import {
+  getStrategies,
+  loadTradingSettings,
+  resolveRiskForStrategy,
+} from './tradingSettings.js';
 
 const ALL_STORAGE_KEYS = [
   'ticker', 'marketType', 'strategy', 'direction',
-  'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'inPlay',
+  'riskPercent', 'ratio', 'luftPercent', 'riskSum', 'riskPresetId', 'inPlay',
   'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
   'checklistPlus', 'checklistMinus', 'checklistWait',
   'lastDealId',
 ] as const;
+
+let currentRiskPresetId: number | undefined;
 
 const SUBMIT_CLEAR_KEYS: Array<typeof ALL_STORAGE_KEYS[number]> = [
   'entryRaw', 'customStop', 'atrOverride', 'passRoadOverride',
@@ -185,6 +192,7 @@ function collectPayload(): FormPayload {
     customStop: parseFloat((document.getElementById('customStop') as HTMLInputElement).value) || undefined,
     atrOverride:      !isNaN(atrOverrideVal) && atrOverrideVal > 0 ? atrOverrideVal : undefined,
     passRoadOverride: !isNaN(passRoadOverrideVal) && passRoadOverrideVal > 0 ? passRoadOverrideVal : undefined,
+    riskPresetId: currentRiskPresetId,
     riskPercent: parseFloat((document.getElementById('riskPercent') as HTMLInputElement).value),
     ratio: parseFloat((document.getElementById('ratio') as HTMLInputElement).value),
     luftPercent: parseFloat((document.getElementById('luftPercent') as HTMLInputElement).value),
@@ -625,8 +633,54 @@ function setupCollapsible(headerId: string, bodyId: string): void {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+function populateStrategySelect(select: HTMLSelectElement, preferred?: string): void {
+  const list = getStrategies();
+  if (list.length === 0) return;
+  const prev = preferred ?? select.value;
+  select.innerHTML = '';
+  for (const s of list) {
+    const opt = document.createElement('option');
+    opt.value = s.name;
+    opt.textContent = s.name;
+    select.appendChild(opt);
+  }
+  if (prev && list.some((s) => s.name === prev)) {
+    select.value = prev;
+  } else {
+    select.value = list[0]!.name;
+  }
+  currentStrategy = select.value;
+}
+
+function applyRiskPresetToInputs(
+  riskPercentInput: HTMLInputElement,
+  ratioInput: HTMLInputElement,
+  luftPercentInput: HTMLInputElement,
+  riskSumInput: HTMLInputElement,
+  strategyName: string,
+  persist: boolean,
+): void {
+  const preset = resolveRiskForStrategy(strategyName);
+  if (!preset) return;
+  currentRiskPresetId = preset.id > 0 ? preset.id : undefined;
+  riskPercentInput.value = String(preset.riskPercent);
+  ratioInput.value = String(preset.ratio);
+  luftPercentInput.value = String(preset.luftPercent);
+  riskSumInput.value = String(preset.riskSum);
+  if (persist) {
+    chrome.storage.local.set({
+      riskPresetId: currentRiskPresetId,
+      riskPercent: riskPercentInput.value,
+      ratio: ratioInput.value,
+      luftPercent: luftPercentInput.value,
+      riskSum: riskSumInput.value,
+    });
+  }
+}
+
 async function initForm(): Promise<void> {
-  await loadChecklist();
+  // Silent refresh: cache first paint path is inside loaders; network updates in place
+  await Promise.all([loadChecklist(), loadTradingSettings()]);
 
   const stored = await chrome.storage.local.get([...ALL_STORAGE_KEYS]);
 
@@ -642,9 +696,12 @@ async function initForm(): Promise<void> {
   const atrOverrideInput = document.getElementById('atrOverride') as HTMLInputElement;
   const passRoadOverrideInput = document.getElementById('passRoadOverride') as HTMLInputElement;
   const inPlayInput      = document.getElementById('inPlay') as HTMLInputElement;
+
+  populateStrategySelect(strategySelect, stored['strategy'] as string | undefined);
+
   if (stored['ticker'])      tickerInput.value      = stored['ticker'] as string;
   if (stored['marketType'])  marketTypeSelect.value = stored['marketType'] as string;
-  if (stored['strategy']) {
+  if (stored['strategy'] && getStrategies().some((s) => s.name === stored['strategy'])) {
     strategySelect.value = stored['strategy'] as string;
     currentStrategy = stored['strategy'] as Strategy;
   }
@@ -652,12 +709,24 @@ async function initForm(): Promise<void> {
   if (stored['ratio'])       ratioInput.value       = String(stored['ratio']);
   if (stored['luftPercent']) luftPercentInput.value = String(stored['luftPercent']);
   if (stored['riskSum'])     riskSumInput.value     = String(stored['riskSum']);
+  if (typeof stored['riskPresetId'] === 'number') currentRiskPresetId = stored['riskPresetId'];
   if (stored['entryRaw'])    entryRawInput.value    = String(stored['entryRaw']);
   if (stored['customStop'])  customStopInput.value  = String(stored['customStop']);
   if (stored['atrOverride'])      atrOverrideInput.value      = String(stored['atrOverride']);
   if (stored['passRoadOverride']) passRoadOverrideInput.value = String(stored['passRoadOverride']);
   if (stored['inPlay'])      inPlayInput.checked    = stored['inPlay'] as boolean;
   if (stored['direction']) setDirection(stored['direction'] as Direction);
+
+  // If no stored risk overrides, fill from strategy default preset
+  if (!stored['riskPercent']) {
+    applyRiskPresetToInputs(
+      riskPercentInput, ratioInput, luftPercentInput, riskSumInput,
+      currentStrategy, false,
+    );
+  } else {
+    const preset = resolveRiskForStrategy(currentStrategy);
+    if (preset && preset.id > 0) currentRiskPresetId = preset.id;
+  }
 
   const savedPlus  = (stored['checklistPlus']  as string[] | undefined) ?? [];
   const savedMinus = (stored['checklistMinus'] as string[] | undefined) ?? [];
@@ -688,6 +757,10 @@ async function initForm(): Promise<void> {
   strategySelect.addEventListener('change', () => {
     currentStrategy = strategySelect.value as Strategy;
     chrome.storage.local.set({ strategy: currentStrategy });
+    applyRiskPresetToInputs(
+      riskPercentInput, ratioInput, luftPercentInput, riskSumInput,
+      currentStrategy, true,
+    );
     renderChecklist(currentStrategy);
   });
 

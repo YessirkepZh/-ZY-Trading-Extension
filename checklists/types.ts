@@ -1,4 +1,5 @@
-export type Strategy = 'Пробой' | 'Ложный Пробой' | 'Отбой';
+/** Strategy name — system defaults + user-defined */
+export type Strategy = string;
 export type MarketType = 'crypto' | 'stocks' | 'forex';
 export type Direction = 'long' | 'short';
 
@@ -21,7 +22,7 @@ export interface ChecklistSnapshot {
 
 export interface ChecklistGroup {
   id: number;
-  name: Strategy;
+  name: string;
   plus:  ChecklistItem[];
   minus: ChecklistItem[];
   wait:  ChecklistItem[];
@@ -38,6 +39,7 @@ export interface FormPayload {
   passRoadOverride?: number;
   /** Today's open from the ATR ZY indicator: lets the backend skip downloading candles */
   dayOpen?: number;
+  riskPresetId?: number;
   riskPercent: number;
   ratio: number;
   luftPercent: number;
